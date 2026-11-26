@@ -20,7 +20,7 @@ All logic lives in `game.js` as top-level functions sharing module-level mutable
 
 Key conventions spanning multiple functions:
 
-- **Cell values = piece type = color index.** `PIECES[type]` matrices store `type` (1–7) in filled cells; `merge()` copies those values into `board`, and `drawBlock()` looks them up in `COLORS`. Adding/reordering pieces requires keeping `PIECES` and `COLORS` indices aligned (and `randomPiece()` hardcodes `* 7`).
+- **Cell values = piece type = color index.** `PIECES[type]` matrices store `type` (1–7) in filled cells; `merge()` copies those values into `board`, and `drawBlock()` looks them up in `COLORS`. Adding/reordering pieces requires keeping `PIECES` and `COLORS` indices aligned (`randomPiece()` uses `PIECES.length - 1`). Type 8 = `NUT` (3×3 ring with empty center; `drawNutHole()` draws its circle while falling/preview — once locked the center is a real empty cell).
 - **Rotation** = `rotateCW()` on the square shape matrix; `tryRotate()` applies simple horizontal kicks `[0,-1,1,-2,2]` (not SRS).
 - **Piece lifecycle:** gravity in `loop()` / `softDrop()` / `hardDrop()` → `lockPiece()` → `merge()` → `clearLines()` (updates score/level/`dropInterval`) → `spawn()` (promotes `next`, game over if spawn collides).
 - **Game loop:** `requestAnimationFrame` with a `dropAccum` time accumulator. Pause/game over work by `cancelAnimationFrame(animId)`; unpause restarts via `loop(performance.now())`. `endGame()` cancels the pending frame, but since game over is usually triggered from inside `loop()` (whose frame is already running), `loop()` itself returns early when `gameOver` is set instead of scheduling another frame.
