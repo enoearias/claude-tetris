@@ -13,8 +13,8 @@
   --kbd-bg: #22223a;
   --kbd-border: #3a3a5a;
   --kbd-text: #aaa;
-  --overlay-bg: var(--overlay-bg);
-  --shadow: var(--shadow);
+  --overlay-bg: rgba(15, 15, 23, 0.82);
+  --shadow: rgba(0, 0, 0, 0.5);
 }
 
 [data-theme="light"] {
@@ -109,7 +109,7 @@ body {
   letter-spacing: 1px;
 }
 
-#next-canvas {
+#next-canvas, #hold-canvas, #queue-canvas {
   display: block;
   border: 1px solid var(--border);
   background: var(--board-bg);
@@ -170,7 +170,15 @@ kbd {
   font-size: 28px;
   font-weight: 800;
   letter-spacing: 4px;
+  color: var(--accent);
+}
+
+#overlay-title.lose {
   color: #e57373;
+}
+
+#overlay-title.win {
+  color: #81c784;
 }
 
 #overlay-score {
@@ -198,7 +206,7 @@ kbd {
 }
 
 /* ---- Botón de tema ---- */
-#theme-btn {
+#theme-btn, #sound-btn {
   background: var(--kbd-bg);
   color: var(--text);
   border: 1px solid var(--kbd-border);
@@ -210,6 +218,138 @@ kbd {
   transition: background 0.15s;
 }
 
-#theme-btn:hover {
+#theme-btn:hover, #sound-btn:hover {
   border-color: var(--accent);
+}
+
+/* ---- Panel izquierdo, stats, energía, hold ---- */
+.label small {
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 8px;
+}
+
+.stats .value {
+  font-size: 20px;
+}
+
+.mode-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 14px;
+}
+
+.hint.status {
+  white-space: pre-line;
+}
+
+#hold-slot {
+  transition: opacity 0.15s;
+}
+
+#hold-slot.locked {
+  opacity: 0.35;
+}
+
+.energy-bar {
+  height: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--board-bg);
+  overflow: hidden;
+}
+
+.energy-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #7aa2f7, #bb9af7);
+  transition: width 0.2s;
+}
+
+.energy-bar.full {
+  border-color: #ffd54f;
+  box-shadow: 0 0 10px #ffd54f;
+  animation: pulse 0.9s ease-in-out infinite alternate;
+}
+
+.energy-bar.full .energy-fill {
+  background: linear-gradient(90deg, #ffd54f, #ffb74d);
+}
+
+@keyframes pulse {
+  from { box-shadow: 0 0 4px #ffd54f; }
+  to   { box-shadow: 0 0 14px #ffd54f; }
+}
+
+.panel-section.hidden,
+.menu.hidden,
+#restart-btn.hidden {
+  display: none;
+}
+
+/* ---- Menús del overlay (modos / habilidades) ---- */
+.menu {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 420px;
+  margin-top: 8px;
+}
+
+.menu-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  text-align: left;
+  background: var(--kbd-bg);
+  color: var(--text);
+  border: 1px solid var(--kbd-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.menu-btn strong {
+  font-size: 14px;
+}
+
+.menu-btn small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.menu-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.menu-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- Sacudida del tablero (Tetris, combos, bomba) ---- */
+#board.shake {
+  animation: shake 0.3s;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-5px, 2px); }
+  40% { transform: translate(5px, -2px); }
+  60% { transform: translate(-3px, 1px); }
+  80% { transform: translate(3px, -1px); }
 }

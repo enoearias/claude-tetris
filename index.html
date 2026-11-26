@@ -10,20 +10,51 @@
   <div class="wrapper">
     <h1 class="game-title">TETRIS</h1>
     <div class="game-container">
+      <aside class="panel panel-left">
+        <div class="panel-section" id="hold-slot">
+          <span class="label">HOLD <small>(C / Shift)</small></span>
+          <canvas id="hold-canvas" width="120" height="120"></canvas>
+          <span class="hint" id="hold-charges"></span>
+        </div>
+
+        <div class="panel-section">
+          <span class="label">MODO</span>
+          <span class="mode-name" id="mode-name">—</span>
+          <span class="hint" id="objective"></span>
+        </div>
+
+        <div class="panel-section">
+          <span class="label">ENERGÍA <small>(E)</small></span>
+          <div class="energy-bar" id="energy-bar"><div class="energy-fill" id="energy-fill"></div></div>
+          <span class="hint" id="energy-hint">0%</span>
+        </div>
+
+        <div class="panel-section">
+          <span class="label">ESTADO</span>
+          <span class="hint status" id="status">—</span>
+        </div>
+      </aside>
+
       <canvas id="board" width="300" height="600"></canvas>
 
       <aside class="panel">
-        <div class="panel-section">
-          <span class="label">SCORE</span>
-          <span class="value" id="score">0</span>
-        </div>
-        <div class="panel-section">
-          <span class="label">LINES</span>
-          <span class="value" id="lines">0</span>
-        </div>
-        <div class="panel-section">
-          <span class="label">LEVEL</span>
-          <span class="value" id="level">1</span>
+        <div class="stats">
+          <div class="panel-section">
+            <span class="label">SCORE</span>
+            <span class="value" id="score">0</span>
+          </div>
+          <div class="panel-section">
+            <span class="label">LINES</span>
+            <span class="value" id="lines">0</span>
+          </div>
+          <div class="panel-section">
+            <span class="label">LEVEL</span>
+            <span class="value" id="level">1</span>
+          </div>
+          <div class="panel-section">
+            <span class="label">COMBO</span>
+            <span class="value" id="combo">–</span>
+          </div>
         </div>
 
         <div class="panel-section">
@@ -31,18 +62,26 @@
           <canvas id="next-canvas" width="120" height="120"></canvas>
         </div>
 
+        <div class="panel-section hidden" id="queue-section">
+          <span class="label">DESPUÉS</span>
+          <canvas id="queue-canvas" width="120" height="240"></canvas>
+        </div>
+
         <div class="panel-section controls">
           <span class="label">CONTROLS</span>
           <ul>
             <li><kbd>←</kbd><kbd>→</kbd> mover</li>
-            <li><kbd>↑</kbd> rotar</li>
+            <li><kbd>↑</kbd>/<kbd>X</kbd> rotar <kbd>Z</kbd> ↺</li>
             <li><kbd>↓</kbd> bajar</li>
             <li><kbd>Space</kbd> caída</li>
-            <li><kbd>P</kbd> pausa</li>
+            <li><kbd>C</kbd>/<kbd>Shift</kbd> guardar</li>
+            <li><kbd>E</kbd> habilidad</li>
+            <li><kbd>P</kbd> pausa <kbd>M</kbd> sonido</li>
           </ul>
         </div>
 
-        <button id="theme-btn" type="button" aria-label="Cambiar entre modo oscuro y claro">☀ Modo claro</button>
+        <button id="theme-btn" class="side-btn" type="button" aria-label="Cambiar entre modo oscuro y claro">☀ Modo claro</button>
+        <button id="sound-btn" class="side-btn" type="button" aria-label="Activar o silenciar el sonido">🔊 Sonido: sí</button>
       </aside>
     </div>
 
@@ -50,7 +89,9 @@
       <div class="overlay-box">
         <p id="overlay-title">GAME OVER</p>
         <p id="overlay-score"></p>
-        <button id="restart-btn">Reiniciar</button>
+        <button id="restart-btn" type="button">Reiniciar</button>
+        <div id="mode-menu" class="menu hidden"></div>
+        <div id="ability-menu" class="menu hidden"></div>
       </div>
     </div>
   </div>

@@ -4,6 +4,15 @@ const COLS = 10;
 const ROWS = 20;
 const BLOCK = 30;
 
+// ---- Tipos de celda (tipo de pieza = índice de color) ----
+const NUT = 8;      // tuerca 3×3 con hueco central (reto)
+const PLUS = 9;     // pentominó +
+const U_PIECE = 10; // pentominó U
+const Y_PIECE = 11; // pentominó Y
+const SINGLE = 12;  // 1×1, premio tras un Tetris
+const GARBAGE = 13; // bloque gris (modos Basura y Tablero fijo), nunca cae como pieza
+const WILD = 14;    // comodín (power-up Tinte), nunca cae como pieza
+
 const COLORS = [
   null,
   '#4dd0e1', // I - cyan
@@ -13,6 +22,13 @@ const COLORS = [
   '#e57373', // Z - red
   '#90caf9', // J - azul pálido
   '#ffb74d', // L - orange
+  '#b0bec5', // N - tuerca (gris metálico)
+  '#f06292', // + - rosa
+  '#aed581', // U - lima
+  '#4db6ac', // Y - verde azulado
+  '#fff59d', // single - amarillo claro
+  '#5c6070', // basura
+  '#ffffff', // comodín (se pinta con degradado arcoíris)
 ];
 
 // Paleta algo más intensa para fondo claro (mismos índices que COLORS)
@@ -25,6 +41,13 @@ const COLORS_LIGHT = [
   '#e53935', // Z
   '#1e88e5', // J
   '#fb8c00', // L
+  '#607d8b', // N
+  '#d81b60', // +
+  '#7cb342', // U
+  '#00897b', // Y
+  '#fbc02d', // single
+  '#9e9e9e', // basura
+  '#000000', // comodín
 ];
 
 const PIECES = [
@@ -36,36 +59,162 @@ const PIECES = [
   [[5,5,0],[0,5,5],[0,0,0]],                  // Z
   [[6,0,0],[6,6,6],[0,0,0]],                  // J
   [[0,0,7],[7,7,7],[0,0,0]],                  // L
+  [[8,8,8],[8,0,8],[8,8,8]],                  // N - tuerca (reto)
+  [[0,9,0],[9,9,9],[0,9,0]],                  // +
+  [[10,0,10],[10,10,10],[0,0,0]],             // U
+  [[0,11,0,0],[11,11,11,11],[0,0,0,0],[0,0,0,0]], // Y
+  [[12]],                                      // single 1×1
+  null,                                        // basura (solo tablero)
+  null,                                        // comodín (solo tablero)
 ];
 
-const LINE_SCORES = [0, 100, 300, 500, 800];
+// Probabilidad relativa de cada tipo en randomPiece(): las especiales aparecen "de vez en cuando"
+const PIECE_WEIGHTS = [0, 1, 1, 1, 1, 1, 1, 1, 0.12, 0.12, 0.12, 0.12, 0, 0, 0];
 
+const LINE_SCORES = [0, 100, 300, 500, 800];
+const LINE_NAMES = ['', '', 'DOBLE', 'TRIPLE', 'TETRIS'];
+const TSPIN_SCORES = [400, 800, 1200, 1600];
+const TSPIN_NAMES = ['T-SPIN', 'T-SPIN SIMPLE', 'T-SPIN DOBLE', 'T-SPIN TRIPLE'];
+const PERFECT_CLEAR_BONUS = 3000;
+const WILD_BONUS = 50;
+
+const QUEUE_SIZE = 6;
+
+// ---- Power-ups ----
+const POWERS = {
+  bomba:    { icon: '💣', name: '¡BOMBA!' },
+  rayo:     { icon: '⚡', name: '¡RAYO!' },
+  tinte:    { icon: '🎨', name: '¡TINTE!' },
+  gravedad: { icon: '🧲', name: '¡GRAVEDAD!' },
+  congelar: { icon: '❄', name: '¡CONGELADO!' },
+};
+const POWER_KEYS = Object.keys(POWERS);
+const LINES_PER_POWER = 4;
+const FREEZE_MS = 5000;
+
+// ---- Modos desafío ----
+const MODES = {
+  clasico:   { name: 'Clásico',          desc: 'Juego sin fin' },
+  sprint:    { name: 'Sprint 40',        desc: '40 líneas en 2 minutos' },
+  basura:    { name: 'Basura',           desc: 'Sube una fila cada 10 s' },
+  fijo:      { name: 'Tablero fijo',     desc: 'Elimina todos los bloques grises' },
+  invisible: { name: 'Invisible',        desc: 'Las piezas desaparecen al caer' },
+  inverso:   { name: 'Rotación inversa', desc: 'Desde nivel 5 se invierte el giro' },
+};
+const SPRINT_LINES = 40;
+const SPRINT_TIME = 120000;
+const GARBAGE_EVERY = 10000;
+const INVERSE_LEVEL = 5;
+const REVEAL_MS = 600;
+const FIXED_PATTERN = [
+  '....##....',
+  '...####...',
+  '#..####..#',
+  '##.#..#.##',
+  '###.##.###',
+  '#.######.#',
+  '####..####',
+];
+
+// ---- Habilidades (barra de energía) ----
+const ABILITIES = [
+  { id: 'ver5',     name: 'Ver 5 próximas',  desc: 'Durante 10 piezas' },
+  { id: 'cambiar',  name: 'Cambiar pieza',   desc: 'Otra pieza del pool' },
+  { id: 'lento',    name: 'Ralentizar',      desc: 'Caída lenta 10 s' },
+  { id: 'deshacer', name: 'Deshacer',        desc: 'Anula la última colocación' },
+  { id: 'reserva',  name: 'Reserva extra',   desc: '+2 usos del hold por turno' },
+];
+const ENERGY_PER_LINE = 10;
+const SLOW_MS = 10000;
+const REVEAL_PIECES = 10;
+
+// ---- DOM ----
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 const nextCanvas = document.getElementById('next-canvas');
 const nextCtx = nextCanvas.getContext('2d');
+const holdCanvas = document.getElementById('hold-canvas');
+const holdCtx = holdCanvas.getContext('2d');
+const queueCanvas = document.getElementById('queue-canvas');
+const queueCtx = queueCanvas.getContext('2d');
 const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
 const levelEl = document.getElementById('level');
+const comboEl = document.getElementById('combo');
+const modeNameEl = document.getElementById('mode-name');
+const objectiveEl = document.getElementById('objective');
+const statusEl = document.getElementById('status');
+const energyFill = document.getElementById('energy-fill');
+const energyBar = document.getElementById('energy-bar');
+const energyHint = document.getElementById('energy-hint');
+const holdSlot = document.getElementById('hold-slot');
+const holdChargesEl = document.getElementById('hold-charges');
+const queueSection = document.getElementById('queue-section');
 const overlay = document.getElementById('overlay');
 const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
+const modeMenu = document.getElementById('mode-menu');
+const abilityMenu = document.getElementById('ability-menu');
 const restartBtn = document.getElementById('restart-btn');
 const themeBtn = document.getElementById('theme-btn');
+const soundBtn = document.getElementById('sound-btn');
 
 const THEME_KEY = 'tetris-theme';
+const MUTE_KEY = 'tetris-muted';
 let theme = 'dark';
+let muted = false;
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let board, current, queue, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let mode = 'clasico', started = false, menu = null; // menu: null | 'modes' | 'pause' | 'abilities'
+let gameTime = 0;                                    // ms de juego (no avanza en pausa)
+let hold, holdUsed, holdCharges;
+let combo, b2b, lastMoveRotate;
+let linesSincePower, frozenUntil, slowUntil;
+let energy, queueReveal, snapshot;
+let nextGarbageAt, revealUntil;
+let floats = [], flashes = [];
+
+// ---------------------------------------------------------------------------
+// Piezas
+// ---------------------------------------------------------------------------
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
 }
 
-function randomPiece() {
-  const type = Math.floor(Math.random() * 7) + 1;
+function makePiece(type, power = null) {
   const shape = PIECES[type].map(row => [...row]);
-  return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
+  return { type, shape, power, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
+}
+
+function clonePiece(p) {
+  return p ? { ...p, shape: p.shape.map(row => [...row]) } : null;
+}
+
+function randomType() {
+  const total = PIECE_WEIGHTS.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let t = 1; t < PIECE_WEIGHTS.length; t++) {
+    r -= PIECE_WEIGHTS[t];
+    if (r < 0) return t;
+  }
+  return 1;
+}
+
+function randomPiece() {
+  return makePiece(randomType());
+}
+
+function fillQueue() {
+  while (queue.length < QUEUE_SIZE) queue.push(randomPiece());
+}
+
+function pieceCells(p) {
+  const cells = [];
+  for (let r = 0; r < p.shape.length; r++)
+    for (let c = 0; c < p.shape[r].length; c++)
+      if (p.shape[r][c]) cells.push({ x: p.x + c, y: p.y + r });
+  return cells;
 }
 
 function collide(shape, ox, oy) {
@@ -90,42 +239,199 @@ function rotateCW(shape) {
   return result;
 }
 
-function tryRotate() {
-  const rotated = rotateCW(current.shape);
+function rotateCCW(shape) {
+  const rows = shape.length, cols = shape[0].length;
+  const result = Array.from({ length: cols }, () => new Array(rows).fill(0));
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      result[cols - 1 - c][r] = shape[r][c];
+  return result;
+}
+
+function rotationInverted() {
+  return mode === 'inverso' && level >= INVERSE_LEVEL;
+}
+
+// dir: 1 = horario, -1 = antihorario (se invierte en el modo Rotación inversa)
+function tryRotate(dir) {
+  if (rotationInverted()) dir = -dir;
+  const rotated = dir > 0 ? rotateCW(current.shape) : rotateCCW(current.shape);
   const kicks = [0, -1, 1, -2, 2];
   for (const kick of kicks) {
     if (!collide(rotated, current.x + kick, current.y)) {
       current.shape = rotated;
       current.x += kick;
+      lastMoveRotate = true;
       return;
     }
   }
 }
 
-function merge() {
-  for (let r = 0; r < current.shape.length; r++)
-    for (let c = 0; c < current.shape[r].length; c++)
-      if (current.shape[r][c])
-        board[current.y + r][current.x + c] = current.shape[r][c];
+function move(dx) {
+  if (!collide(current.shape, current.x + dx, current.y)) {
+    current.x += dx;
+    lastMoveRotate = false;
+  }
 }
 
-function clearLines() {
-  let cleared = 0;
-  for (let r = ROWS - 1; r >= 0; r--) {
-    if (board[r].every(v => v !== 0)) {
-      board.splice(r, 1);
-      board.unshift(new Array(COLS).fill(0));
-      cleared++;
-      r++;
-    }
+// T-spin: pieza T, último movimiento fue un giro y ≥3 de las 4 esquinas de su caja 3×3 ocupadas
+function isTSpin() {
+  if (current.type !== 3 || !lastMoveRotate) return false;
+  const corners = [[0, 0], [2, 0], [0, 2], [2, 2]];
+  let filled = 0;
+  for (const [dx, dy] of corners) {
+    const x = current.x + dx, y = current.y + dy;
+    if (x < 0 || x >= COLS || y >= ROWS || (y >= 0 && board[y][x])) filled++;
   }
-  if (cleared) {
-    lines += cleared;
-    score += (LINE_SCORES[cleared] || 0) * level;
+  return filled >= 3;
+}
+
+// Devuelve false si la pieza queda por encima del tablero (top out)
+function merge() {
+  const cells = pieceCells(current);
+  if (cells.some(p => p.y < 0)) return false;
+  for (const p of cells) board[p.y][p.x] = current.shape[p.y - current.y][p.x - current.x];
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Power-ups
+// ---------------------------------------------------------------------------
+
+function grantPower() {
+  const target = queue[0].power ? queue.find(p => !p.power) : queue[0];
+  if (target) target.power = POWER_KEYS[Math.floor(Math.random() * POWER_KEYS.length)];
+}
+
+function applyGravity() {
+  for (let c = 0; c < COLS; c++) {
+    const col = [];
+    for (let r = ROWS - 1; r >= 0; r--) if (board[r][c]) col.push(board[r][c]);
+    for (let r = ROWS - 1, i = 0; r >= 0; r--, i++) board[r][c] = col[i] || 0;
+  }
+}
+
+function applyPower(p) {
+  const cells = pieceCells(p);
+  const xs = cells.map(c => c.x), ys = cells.map(c => c.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const cx = Math.round((minX + maxX) / 2), cy = Math.round((minY + maxY) / 2);
+
+  switch (p.power) {
+    case 'bomba':
+      for (let y = cy - 1; y <= cy + 1; y++)
+        for (let x = cx - 1; x <= cx + 1; x++)
+          if (y >= 0 && y < ROWS && x >= 0 && x < COLS) board[y][x] = 0;
+      addFlash(cx - 1, cy - 1, 3, 3);
+      shake();
+      break;
+    case 'rayo':
+      if (maxX - minX >= maxY - minY) {
+        board[maxY].fill(0);
+        addFlash(0, maxY, COLS, 1);
+      } else {
+        for (let r = 0; r < ROWS; r++) board[r][cx] = 0;
+        addFlash(cx, 0, 1, ROWS);
+      }
+      break;
+    case 'tinte': {
+      const counts = {};
+      for (const row of board)
+        for (const v of row)
+          if (v && v !== GARBAGE && v !== WILD) counts[v] = (counts[v] || 0) + 1;
+      const best = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+      if (best) {
+        const t = Number(best);
+        for (const row of board)
+          for (let c = 0; c < COLS; c++) if (row[c] === t) row[c] = WILD;
+      }
+      break;
+    }
+    case 'gravedad':
+      applyGravity();
+      addFlash(0, 0, COLS, ROWS);
+      break;
+    case 'congelar':
+      frozenUntil = gameTime + FREEZE_MS;
+      break;
+  }
+  addFloat(POWERS[p.power].name, '#ffffff');
+  sfx('power');
+}
+
+// ---------------------------------------------------------------------------
+// Líneas, puntuación, combos
+// ---------------------------------------------------------------------------
+
+function clearLines(tspin) {
+  const full = [];
+  for (let r = 0; r < ROWS; r++) if (board[r].every(v => v !== 0)) full.push(r);
+  const n = full.length;
+
+  let wilds = 0;
+  if (n) {
+    for (const r of full) addFlash(0, r, COLS, 1);
+    board = board.filter((_, i) => !full.includes(i));
+    while (board.length < ROWS) board.unshift(new Array(COLS).fill(0));
+    // Los comodines explotan al completar cualquier línea
+    for (const row of board)
+      for (let c = 0; c < COLS; c++)
+        if (row[c] === WILD) { row[c] = 0; wilds++; }
+    revealUntil = gameTime + REVEAL_MS;
+  }
+
+  const labels = [];
+  let points = 0;
+  if (tspin) {
+    points = TSPIN_SCORES[n] * level;
+    labels.push(TSPIN_NAMES[n]);
+  } else if (n) {
+    points = LINE_SCORES[n] * level;
+    if (LINE_NAMES[n]) labels.push(LINE_NAMES[n]);
+  }
+
+  let perfect = false;
+  if (n) {
+    const difficult = n === 4 || tspin;
+    combo++;
+    if (difficult && b2b) { points = Math.floor(points * 1.5); labels.push('B2B ×1.5'); }
+    b2b = difficult;
+    if (combo > 1) { points *= combo; labels.push(`COMBO ×${combo}`); }
+    if (wilds) { points += wilds * WILD_BONUS * level; labels.push(`COMODINES +${wilds}`); }
+    if (board.every(row => row.every(v => !v))) {
+      perfect = true;
+      points += PERFECT_CLEAR_BONUS * level;
+      labels.push('PERFECT CLEAR');
+    }
+
+    lines += n;
+    linesSincePower += n;
+    energy = Math.min(100, energy + n * ENERGY_PER_LINE + (difficult ? ENERGY_PER_LINE : 0));
     level = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
-    updateHUD();
+
+    if (n === 4) {
+      queue.unshift(makePiece(SINGLE)); // premio
+      labels.push('PREMIO 1×1');
+    }
+    while (linesSincePower >= LINES_PER_POWER) {
+      linesSincePower -= LINES_PER_POWER;
+      grantPower();
+    }
+
+    if (perfect) sfx('win');
+    else if (n === 4) sfx('tetris');
+    else if (combo > 1) sfx('combo', combo);
+    else sfx('line', n);
+    if (n === 4 || combo >= 3 || perfect) shake();
+  } else {
+    combo = 0;
   }
+
+  score += points;
+  labels.forEach((text, i) => addFloat(text, i === 0 ? '#ffd54f' : '#ffffff', i * 220));
+  return n;
 }
 
 function ghostY() {
@@ -137,6 +443,7 @@ function ghostY() {
 function hardDrop() {
   const gy = ghostY();
   score += (gy - current.y) * 2;
+  if (gy !== current.y) lastMoveRotate = false;
   current.y = gy;
   lockPiece();
 }
@@ -144,44 +451,392 @@ function hardDrop() {
 function softDrop() {
   if (!collide(current.shape, current.x, current.y + 1)) {
     current.y++;
+    lastMoveRotate = false;
     score += 1;
-    updateHUD();
   } else {
     lockPiece();
   }
 }
 
+function takeSnapshot() {
+  return {
+    board: board.map(row => [...row]),
+    current: makePiece(current.type, current.power),
+    queue: queue.map(clonePiece),
+    hold: clonePiece(hold),
+    score, lines, level, dropInterval, combo, b2b, linesSincePower, holdCharges,
+  };
+}
+
+function restoreSnapshot(s) {
+  board = s.board;
+  current = s.current;
+  queue = s.queue;
+  hold = s.hold;
+  ({ score, lines, level, dropInterval, combo, b2b, linesSincePower, holdCharges } = s);
+  holdUsed = false;
+  lastMoveRotate = false;
+  drawPreviews();
+}
+
 function lockPiece() {
-  merge();
-  clearLines();
+  snapshot = takeSnapshot();
+  const tspin = isTSpin();
+  const piece = current;
+  if (!merge()) { endGame('GAME OVER'); return; }
+  sfx('lock');
+  if (piece.power) applyPower(piece);
+  clearLines(tspin);
+  if (checkObjective()) return;
+  holdUsed = false;
   spawn();
 }
 
 function spawn() {
-  current = next;
-  next = randomPiece();
-  if (collide(current.shape, current.x, current.y)) {
-    endGame();
-  }
-  drawNext();
+  current = queue.shift();
+  fillQueue();
+  lastMoveRotate = false;
+  if (queueReveal > 0) queueReveal--;
+  drawPreviews();
+  if (collide(current.shape, current.x, current.y)) endGame('GAME OVER');
 }
+
+// ---------------------------------------------------------------------------
+// Hold
+// ---------------------------------------------------------------------------
+
+function canHold() {
+  return !holdUsed || holdCharges > 0;
+}
+
+function doHold() {
+  if (!canHold()) { sfx('deny'); return; }
+  if (holdUsed) holdCharges--;
+  holdUsed = true;
+  const stored = makePiece(current.type, current.power);
+  if (hold) {
+    current = makePiece(hold.type, hold.power);
+    hold = stored;
+    lastMoveRotate = false;
+    drawPreviews();
+    if (collide(current.shape, current.x, current.y)) endGame('GAME OVER');
+  } else {
+    hold = stored;
+    spawn();
+  }
+  sfx('hold');
+}
+
+// ---------------------------------------------------------------------------
+// Modos
+// ---------------------------------------------------------------------------
+
+function applyFixedPattern() {
+  const top = ROWS - FIXED_PATTERN.length;
+  FIXED_PATTERN.forEach((line, i) => {
+    for (let c = 0; c < COLS; c++) board[top + i][c] = line[c] === '#' ? GARBAGE : 0;
+  });
+}
+
+function countGarbage() {
+  return board.reduce((n, row) => n + row.filter(v => v === GARBAGE).length, 0);
+}
+
+function addGarbageRow() {
+  if (board[0].some(v => v)) { endGame('GAME OVER'); return; }
+  board.shift();
+  const row = new Array(COLS).fill(GARBAGE);
+  row[Math.floor(Math.random() * COLS)] = 0;
+  board.push(row);
+  if (collide(current.shape, current.x, current.y)) current.y--;
+  sfx('garbage');
+}
+
+function tickMode() {
+  if (mode === 'sprint' && gameTime >= SPRINT_TIME) endGame('TIEMPO');
+  else if (mode === 'basura' && gameTime >= nextGarbageAt) {
+    nextGarbageAt += GARBAGE_EVERY;
+    addGarbageRow();
+  }
+}
+
+// Comprueba victoria tras cada colocación; devuelve true si el juego terminó
+function checkObjective() {
+  if (gameOver) return true;
+  if (mode === 'sprint' && lines >= SPRINT_LINES) { endGame('¡VICTORIA!', true); return true; }
+  if (mode === 'fijo' && countGarbage() === 0) { endGame('¡VICTORIA!', true); return true; }
+  return false;
+}
+
+function formatTime(ms) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function objectiveText() {
+  switch (mode) {
+    case 'sprint':
+      return `⏱ ${formatTime(SPRINT_TIME - gameTime)} · faltan ${Math.max(0, SPRINT_LINES - lines)}`;
+    case 'basura':
+      return `Nueva fila en ${Math.max(0, Math.ceil((nextGarbageAt - gameTime) / 1000))} s`;
+    case 'fijo':
+      return `Bloques grises: ${countGarbage()}`;
+    case 'invisible':
+      return 'Memoriza el tablero';
+    case 'inverso':
+      return rotationInverted() ? '↺ Rotación invertida' : `Se invierte en nivel ${INVERSE_LEVEL}`;
+    default:
+      return 'Sin límite';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Habilidades
+// ---------------------------------------------------------------------------
+
+function abilityAvailable(id) {
+  return id === 'deshacer' ? !!snapshot : true;
+}
+
+function openAbilities() {
+  if (energy < 100) { sfx('deny'); return; }
+  paused = true;
+  menu = 'abilities';
+  cancelAnimationFrame(animId);
+  abilityMenu.querySelectorAll('button').forEach((btn, i) => {
+    btn.disabled = !abilityAvailable(ABILITIES[i].id);
+  });
+  showOverlay({ title: 'HABILIDADES', text: 'Elige con 1–5 · Esc cancela', abilities: true });
+}
+
+function closeAbilities() {
+  menu = null;
+  hideOverlay();
+  resume();
+}
+
+function useAbility(index) {
+  const ab = ABILITIES[index];
+  if (!ab || !abilityAvailable(ab.id)) { sfx('deny'); return; }
+  energy = 0;
+  switch (ab.id) {
+    case 'ver5':
+      queueReveal = REVEAL_PIECES;
+      break;
+    case 'cambiar': {
+      let t;
+      do { t = randomType(); } while (t === current.type);
+      current = makePiece(t, current.power);
+      lastMoveRotate = false;
+      break;
+    }
+    case 'lento':
+      slowUntil = gameTime + SLOW_MS;
+      break;
+    case 'deshacer':
+      restoreSnapshot(snapshot);
+      snapshot = null;
+      break;
+    case 'reserva':
+      holdCharges += 2;
+      break;
+  }
+  addFloat(ab.name.toUpperCase(), '#7aa2f7');
+  sfx('power');
+  drawPreviews();
+  closeAbilities();
+  if (collide(current.shape, current.x, current.y)) endGame('GAME OVER');
+}
+
+// ---------------------------------------------------------------------------
+// Efectos visuales
+// ---------------------------------------------------------------------------
+
+function addFloat(text, color, delay = 0) {
+  floats.push({ text, color, start: gameTime + delay });
+}
+
+function addFlash(x, y, w, h) {
+  flashes.push({ x, y, w, h, start: gameTime });
+}
+
+function shake() {
+  canvas.classList.remove('shake');
+  void canvas.offsetWidth; // reinicia la animación CSS
+  canvas.classList.add('shake');
+}
+
+function drawEffects() {
+  const FLASH_MS = 350, FLOAT_MS = 1300;
+  flashes = flashes.filter(f => gameTime - f.start < FLASH_MS);
+  for (const f of flashes) {
+    ctx.globalAlpha = 0.7 * (1 - (gameTime - f.start) / FLASH_MS);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(f.x * BLOCK, f.y * BLOCK, f.w * BLOCK, f.h * BLOCK);
+  }
+  ctx.globalAlpha = 1;
+
+  floats = floats.filter(f => gameTime - f.start < FLOAT_MS);
+  const visible = floats.filter(f => gameTime >= f.start);
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 22px system-ui, sans-serif';
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  visible.forEach((f, i) => {
+    const t = (gameTime - f.start) / FLOAT_MS;
+    const y = canvas.height * 0.4 + i * 30 - t * 40;
+    ctx.globalAlpha = 1 - t * t;
+    ctx.strokeText(f.text, canvas.width / 2, y);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, canvas.width / 2, y);
+  });
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Sonido (WebAudio, tonos generados)
+// ---------------------------------------------------------------------------
+
+let audioCtx = null;
+
+function tone(freq, dur, type = 'square', vol = 0.05, delay = 0, slideTo = null) {
+  const t0 = audioCtx.currentTime + delay;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+  gain.gain.setValueAtTime(vol, t0);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+
+function sfx(name, arg) {
+  if (muted) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { return; }
+  switch (name) {
+    case 'lock':    tone(140, 0.06, 'triangle', 0.08); break;
+    case 'hold':    tone(330, 0.06, 'triangle', 0.06); break;
+    case 'deny':    tone(110, 0.12, 'sawtooth', 0.04); break;
+    case 'garbage': tone(90, 0.2, 'sawtooth', 0.05); break;
+    case 'line':
+      for (let i = 0; i < arg; i++) tone(520 + i * 120, 0.1, 'square', 0.04, i * 0.06);
+      break;
+    case 'combo':
+      tone(400 + arg * 80, 0.1, 'square', 0.05);
+      tone(500 + arg * 100, 0.12, 'square', 0.05, 0.08);
+      break;
+    case 'tetris':
+      [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.14, 'square', 0.05, i * 0.08));
+      break;
+    case 'power':   tone(300, 0.3, 'sawtooth', 0.04, 0, 900); break;
+    case 'win':
+      [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.18, 'triangle', 0.07, i * 0.1));
+      break;
+    case 'gameover':
+      [392, 330, 262, 196].forEach((f, i) => tone(f, 0.25, 'triangle', 0.07, i * 0.18));
+      break;
+  }
+}
+
+function applyMute(value) {
+  muted = value;
+  soundBtn.textContent = muted ? '🔇 Sonido: no' : '🔊 Sonido: sí';
+  try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (e) { /* almacenamiento no disponible */ }
+}
+
+// ---------------------------------------------------------------------------
+// Dibujo
+// ---------------------------------------------------------------------------
 
 function updateHUD() {
   scoreEl.textContent = score.toLocaleString();
   linesEl.textContent = lines;
   levelEl.textContent = level;
+  comboEl.textContent = combo > 1 ? `×${combo}` : '–';
+  modeNameEl.textContent = MODES[mode].name;
+  objectiveEl.textContent = objectiveText();
+
+  const status = [];
+  if (gameTime < frozenUntil) status.push(`❄ Congelado ${((frozenUntil - gameTime) / 1000).toFixed(1)} s`);
+  if (gameTime < slowUntil) status.push(`🐢 Lento ${Math.ceil((slowUntil - gameTime) / 1000)} s`);
+  if (queueReveal > 0) status.push(`👁 Vista ×5: ${queueReveal} piezas`);
+  if (b2b) status.push('B2B listo');
+  statusEl.textContent = status.join('\n') || '—';
+
+  energyFill.style.width = `${energy}%`;
+  energyBar.classList.toggle('full', energy >= 100);
+  energyHint.textContent = energy >= 100 ? '¡Lista! Pulsa E' : `${energy}%`;
+
+  holdSlot.classList.toggle('locked', !canHold());
+  holdChargesEl.textContent = holdCharges > 0 ? `+${holdCharges} usos extra` : '';
+  queueSection.classList.toggle('hidden', queueReveal <= 0);
 }
 
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
-  const color = (theme === 'light' ? COLORS_LIGHT : COLORS)[colorIndex];
+  const px = x * size + 1, py = y * size + 1, s = size - 2;
   context.globalAlpha = alpha ?? 1;
-  context.fillStyle = color;
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+  if (colorIndex === WILD) {
+    const g = context.createLinearGradient(px, py, px + s, py + s);
+    ['#ff5252', '#ffd740', '#69f0ae', '#40c4ff', '#e040fb'].forEach((c, i) => g.addColorStop(i / 4, c));
+    context.fillStyle = g;
+  } else {
+    context.fillStyle = (theme === 'light' ? COLORS_LIGHT : COLORS)[colorIndex];
+  }
+  context.fillRect(px, py, s, s);
   // highlight
   context.fillStyle = 'rgba(255,255,255,0.12)';
-  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  context.fillRect(px, py, s, 4);
   context.globalAlpha = 1;
+}
+
+// Dibuja el círculo del hueco de la tuerca en la celda central (x+1, y+1) de la pieza
+function drawNutHole(context, x, y, size, alpha) {
+  const color = (theme === 'light' ? COLORS_LIGHT : COLORS)[NUT];
+  context.globalAlpha = alpha ?? 1;
+  context.strokeStyle = color;
+  context.lineWidth = Math.max(2, size / 8);
+  context.beginPath();
+  context.arc((x + 1.5) * size, (y + 1.5) * size, size * 0.35, 0, Math.PI * 2);
+  context.stroke();
+  context.globalAlpha = 1;
+}
+
+// Pieza completa en (ox, oy) en unidades de celda: bloques + hueco de tuerca + marca de power-up
+function drawPiece(context, piece, ox, oy, size, alpha = 1, decorate = true) {
+  const shape = piece.shape;
+  for (let r = 0; r < shape.length; r++)
+    for (let c = 0; c < shape[r].length; c++)
+      drawBlock(context, ox + c, oy + r, shape[r][c], size, alpha);
+  if (piece.type === NUT) drawNutHole(context, ox, oy, size, alpha);
+  if (!decorate || !piece.power) return;
+
+  context.save();
+  context.globalAlpha = alpha;
+  context.strokeStyle = theme === 'light' ? '#000' : '#fff';
+  context.lineWidth = 2;
+  let minC = Infinity, maxC = -Infinity, minR = Infinity, maxR = -Infinity;
+  for (let r = 0; r < shape.length; r++)
+    for (let c = 0; c < shape[r].length; c++)
+      if (shape[r][c]) {
+        context.strokeRect((ox + c) * size + 2, (oy + r) * size + 2, size - 4, size - 4);
+        minC = Math.min(minC, c); maxC = Math.max(maxC, c);
+        minR = Math.min(minR, r); maxR = Math.max(maxR, r);
+      }
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.font = `${Math.floor(size * 0.8)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+  context.fillStyle = theme === 'light' ? '#000' : '#fff';
+  context.fillText(POWERS[piece.power].icon, (ox + (minC + maxC + 1) / 2) * size, (oy + (minR + maxR + 1) / 2) * size);
+  context.restore();
 }
 
 function drawGrid() {
@@ -204,34 +859,48 @@ function drawGrid() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawGrid();
+  if (!board) return;
 
-  // board
-  for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS; c++)
-      drawBlock(ctx, c, r, board[r][c], BLOCK);
+  // board (en modo Invisible solo se ve brevemente tras limpiar líneas y al terminar)
+  const showBoard = mode !== 'invisible' || gameOver || gameTime < revealUntil;
+  if (showBoard)
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        drawBlock(ctx, c, r, board[r][c], BLOCK);
 
-  // ghost
-  const gy = ghostY();
-  for (let r = 0; r < current.shape.length; r++)
-    for (let c = 0; c < current.shape[r].length; c++)
-      if (current.shape[r][c])
-        drawBlock(ctx, current.x + c, gy + r, current.shape[r][c], BLOCK, 0.2);
+  if (current && !gameOver) {
+    drawPiece(ctx, current, current.x, ghostY(), BLOCK, 0.2, false); // ghost
+    drawPiece(ctx, current, current.x, current.y, BLOCK);
+  }
 
-  // current piece
-  for (let r = 0; r < current.shape.length; r++)
-    for (let c = 0; c < current.shape[r].length; c++)
-      drawBlock(ctx, current.x + c, current.y + r, current.shape[r][c], BLOCK);
+  drawEffects();
 }
 
-function drawNext() {
-  const NB = 30;
+// Centra una pieza dentro de un área w×h (px) del contexto dado
+function drawCentered(context, piece, w, h, size, oy = 0) {
+  if (!piece) return;
+  let minC = Infinity, maxC = -Infinity, minR = Infinity, maxR = -Infinity;
+  piece.shape.forEach((row, r) => row.forEach((v, c) => {
+    if (!v) return;
+    minC = Math.min(minC, c); maxC = Math.max(maxC, c);
+    minR = Math.min(minR, r); maxR = Math.max(maxR, r);
+  }));
+  const ox = (w - (maxC - minC + 1) * size) / 2 / size - minC;
+  const oyCells = (oy + (h - (maxR - minR + 1) * size) / 2) / size - minR;
+  drawPiece(context, piece, ox, oyCells, size);
+}
+
+function drawPreviews() {
   nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
-  const shape = next.shape;
-  const offX = Math.floor((4 - shape[0].length) / 2);
-  const offY = Math.floor((4 - shape.length) / 2);
-  for (let r = 0; r < shape.length; r++)
-    for (let c = 0; c < shape[r].length; c++)
-      drawBlock(nextCtx, offX + c, offY + r, shape[r][c], NB);
+  drawCentered(nextCtx, queue[0], nextCanvas.width, nextCanvas.height, 30);
+
+  holdCtx.clearRect(0, 0, holdCanvas.width, holdCanvas.height);
+  drawCentered(holdCtx, hold, holdCanvas.width, holdCanvas.height, 30);
+
+  queueCtx.clearRect(0, 0, queueCanvas.width, queueCanvas.height);
+  const slot = queueCanvas.height / 4;
+  for (let i = 1; i <= 4; i++)
+    drawCentered(queueCtx, queue[i], queueCanvas.width, slot, 15, (i - 1) * slot);
 }
 
 function applyTheme(newTheme) {
@@ -240,54 +909,103 @@ function applyTheme(newTheme) {
   themeBtn.textContent = theme === 'dark' ? '☀ Modo claro' : '🌙 Modo oscuro';
   try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* almacenamiento no disponible */ }
   // Redibujar aunque el juego esté en pausa o terminado
-  if (current && next) {
-    draw();
-    drawNext();
-  }
+  draw();
+  if (queue) drawPreviews();
 }
 
-function endGame() {
-  gameOver = true;
-  cancelAnimationFrame(animId);
-  overlayTitle.textContent = 'GAME OVER';
-  overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+// ---------------------------------------------------------------------------
+// Overlay, estados y bucle
+// ---------------------------------------------------------------------------
+
+// variant: 'win' (verde) | 'lose' (rojo) | null (color de acento)
+function showOverlay({ title, text = '', modes = false, abilities = false, restart = false, variant = null }) {
+  overlayTitle.textContent = title;
+  overlayTitle.classList.toggle('win', variant === 'win');
+  overlayTitle.classList.toggle('lose', variant === 'lose');
+  overlayScore.textContent = text;
+  modeMenu.classList.toggle('hidden', !modes);
+  abilityMenu.classList.toggle('hidden', !abilities);
+  restartBtn.classList.toggle('hidden', !restart);
   overlay.classList.remove('hidden');
 }
 
-function togglePause() {
+function hideOverlay() {
+  overlay.classList.add('hidden');
+}
+
+function showModeMenu() {
+  menu = 'modes';
+  showOverlay({ title: 'ELIGE UN MODO', modes: true });
+}
+
+function endGame(title, win = false) {
   if (gameOver) return;
-  paused = !paused;
-  if (!paused) {
-    lastTime = performance.now();
-    loop(lastTime);
+  gameOver = true;
+  cancelAnimationFrame(animId);
+  draw();
+  updateHUD();
+  sfx(win ? 'win' : 'gameover');
+  let text = `Puntuación: ${score.toLocaleString()}`;
+  if (win && mode === 'sprint') text += ` · Tiempo ${formatTime(gameTime)}`;
+  menu = 'modes';
+  showOverlay({ title, text, modes: true, restart: true, variant: win ? 'win' : 'lose' });
+}
+
+function resume() {
+  paused = false;
+  lastTime = performance.now();
+  cancelAnimationFrame(animId);
+  animId = requestAnimationFrame(loop);
+}
+
+function togglePause() {
+  if (gameOver || menu === 'abilities') return;
+  if (paused) {
+    menu = null;
+    hideOverlay();
+    resume();
   } else {
+    paused = true;
+    menu = 'pause';
     cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
+    showOverlay({ title: 'PAUSA' });
   }
 }
 
 function loop(ts) {
-  if (gameOver) return;
-  const dt = ts - lastTime;
+  if (gameOver || paused) return;
+  const dt = Math.min(250, Math.max(0, ts - lastTime));
   lastTime = ts;
-  dropAccum += dt;
-  if (dropAccum >= dropInterval) {
-    dropAccum = 0;
-    if (!collide(current.shape, current.x, current.y + 1)) {
-      current.y++;
-    } else {
-      lockPiece();
-      if (gameOver) { draw(); return; } // no agendar más frames tras Game Over
+  gameTime += dt;
+
+  tickMode();
+  if (gameOver) return;
+
+  if (gameTime >= frozenUntil) {
+    dropAccum += dt;
+    const interval = dropInterval * (gameTime < slowUntil ? 3 : 1);
+    if (dropAccum >= interval) {
+      dropAccum = 0;
+      if (!collide(current.shape, current.x, current.y + 1)) {
+        current.y++;
+        lastMoveRotate = false;
+      } else {
+        lockPiece();
+        if (gameOver) return; // no agendar más frames tras Game Over
+      }
     }
   }
   draw();
+  updateHUD();
   animId = requestAnimationFrame(loop);
 }
 
-function init() {
+function init(newMode = mode) {
+  mode = newMode;
+  started = true;
+  menu = null;
   board = createBoard();
+  if (mode === 'fijo') applyFixedPattern();
   score = 0;
   lines = 0;
   level = 1;
@@ -295,49 +1013,105 @@ function init() {
   gameOver = false;
   dropInterval = 1000;
   dropAccum = 0;
-  lastTime = performance.now();
-  next = randomPiece();
+  gameTime = 0;
+  hold = null;
+  holdUsed = false;
+  holdCharges = 0;
+  combo = 0;
+  b2b = false;
+  lastMoveRotate = false;
+  linesSincePower = 0;
+  frozenUntil = 0;
+  slowUntil = 0;
+  energy = 0;
+  queueReveal = 0;
+  snapshot = null;
+  nextGarbageAt = GARBAGE_EVERY;
+  revealUntil = REVEAL_MS * 3; // en Invisible se muestra el tablero inicial un momento
+  floats = [];
+  flashes = [];
+  queue = [];
+  fillQueue();
   spawn();
   updateHUD();
-  overlay.classList.add('hidden');
-  cancelAnimationFrame(animId);
-  animId = requestAnimationFrame(loop);
+  hideOverlay();
+  resume();
 }
 
+// ---------------------------------------------------------------------------
+// Entrada y arranque
+// ---------------------------------------------------------------------------
+
 document.addEventListener('keydown', e => {
+  if (['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Space'].includes(e.code)) e.preventDefault();
+  if (e.code === 'KeyM') { applyMute(!muted); return; }
+
+  if (menu === 'abilities') {
+    if (e.code === 'Escape') closeAbilities();
+    const m = /^(?:Digit|Numpad)([1-5])$/.exec(e.code);
+    if (m) useAbility(Number(m[1]) - 1);
+    return;
+  }
+  if (!started) return;
   if (e.code === 'KeyP') { togglePause(); return; }
   if (paused || gameOver) return;
+
   switch (e.code) {
-    case 'ArrowLeft':
-      if (!collide(current.shape, current.x - 1, current.y)) current.x--;
-      break;
-    case 'ArrowRight':
-      if (!collide(current.shape, current.x + 1, current.y)) current.x++;
-      break;
-    case 'ArrowDown':
-      softDrop();
-      break;
+    case 'ArrowLeft':  move(-1); break;
+    case 'ArrowRight': move(1); break;
+    case 'ArrowDown':  softDrop(); break;
     case 'ArrowUp':
-    case 'KeyX':
-      tryRotate();
+    case 'KeyX':       tryRotate(1); break;
+    case 'KeyZ':       tryRotate(-1); break;
+    case 'Space':      hardDrop(); break;
+    case 'KeyC':
+    case 'ShiftLeft':
+    case 'ShiftRight':
+      if (!e.repeat) doHold();
       break;
-    case 'Space':
-      e.preventDefault();
-      hardDrop();
-      break;
+    case 'KeyE':
+      if (!e.repeat) openAbilities();
+      return;
   }
-  updateHUD();
+  if (!gameOver) updateHUD();
 });
 
-restartBtn.addEventListener('click', init);
+// Menús generados desde MODES / ABILITIES
+for (const [id, m] of Object.entries(MODES)) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'menu-btn';
+  btn.innerHTML = `<strong>${m.name}</strong><small>${m.desc}</small>`;
+  btn.addEventListener('click', () => { btn.blur(); init(id); });
+  modeMenu.appendChild(btn);
+}
+ABILITIES.forEach((ab, i) => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'menu-btn';
+  btn.innerHTML = `<strong>${i + 1} · ${ab.name}</strong><small>${ab.desc}</small>`;
+  btn.addEventListener('click', () => { btn.blur(); useAbility(i); });
+  abilityMenu.appendChild(btn);
+});
+
+restartBtn.addEventListener('click', () => { restartBtn.blur(); init(mode); });
 
 themeBtn.addEventListener('click', () => {
   applyTheme(theme === 'dark' ? 'light' : 'dark');
   themeBtn.blur(); // evita que Space active el botón en vez de la caída rápida
 });
 
-let savedTheme = null;
-try { savedTheme = localStorage.getItem(THEME_KEY); } catch (e) { /* ignorar */ }
+soundBtn.addEventListener('click', () => {
+  applyMute(!muted);
+  soundBtn.blur();
+});
 
-init();
+let savedTheme = null, savedMute = null;
+try {
+  savedTheme = localStorage.getItem(THEME_KEY);
+  savedMute = localStorage.getItem(MUTE_KEY);
+} catch (e) { /* ignorar */ }
+
 applyTheme(savedTheme === 'light' ? 'light' : 'dark');
+applyMute(savedMute === '1');
+showModeMenu();

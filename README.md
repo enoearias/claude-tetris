@@ -43,6 +43,20 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
 - **Niveles** que aumentan cada 10 líneas y aceleran la caída.
 - **Pausa** y **Game Over** con opción de reinicio.
 
+### Extras
+
+- **Piezas no estándar** que aparecen de vez en cuando: tuerca 3×3 con hueco, `+`, `U` e `Y`. Tras un Tetris llega una pieza **1×1** de premio.
+- **Hold** (`C` / `Shift`): guarda la pieza actual o la intercambia con la guardada. Una vez por pieza (el panel se atenúa mientras está bloqueado).
+- **Combos y bonus**: limpiar líneas en turnos consecutivos multiplica la puntuación (×2, ×3…). Bonus por **T-spin**, **B2B** (Tetris/T-spin seguidos, ×1.5) y **Perfect Clear** (+3000 × nivel). Textos flotantes, destellos, sacudida y sonidos generados con WebAudio (`M` silencia).
+- **Power-ups**: cada 4 líneas una pieza llega con efecto especial al asentarse:
+  - 💣 **Bomba**: destruye un área 3×3.
+  - ⚡ **Rayo**: borra una fila (pieza horizontal) o una columna (vertical).
+  - 🎨 **Tinte**: el color más abundante se vuelve comodín; los comodines explotan (+50 × nivel c/u) al completar cualquier línea.
+  - 🧲 **Gravedad**: compacta los huecos del tablero.
+  - ❄ **Congelar**: la pieza deja de caer durante 5 s.
+- **Modos desafío** (menú inicial): Clásico, Sprint 40 (40 líneas en 2 min), Basura (sube una fila cada 10 s), Tablero fijo (elimina los bloques grises), Invisible (las piezas desaparecen al caer) y Rotación inversa (desde nivel 5).
+- **Barra de energía**: se llena limpiando líneas. Llena, `E` abre el menú de habilidades (`1`–`5`): ver 5 próximas piezas, cambiar la pieza actual, ralentizar 10 s, deshacer la última colocación o +2 usos extra del hold.
+
 ---
 
 ## Cómo ejecutar el juego
@@ -82,9 +96,14 @@ Después abre `http://localhost:8000` en el navegador.
 | --------- | --------------------------------- |
 | `←` / `→` | Mover la pieza horizontalmente    |
 | `↑` o `X` | Rotar la pieza en sentido horario |
+| `Z`       | Rotar en sentido antihorario      |
 | `↓`       | Soft drop (bajar más rápido)      |
 | `Espacio` | Hard drop (caída instantánea)     |
+| `C` / `Shift` | Guardar / intercambiar pieza (hold) |
+| `E`       | Usar habilidad (barra llena)      |
+| `1`–`5`   | Elegir habilidad · `Esc` cancela  |
 | `P`       | Pausar / reanudar                 |
+| `M`       | Activar / silenciar sonido        |
 
 ---
 
@@ -159,7 +178,7 @@ Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara
 03-tetris/
 ├── index.html      # Estructura del DOM y canvas
 ├── style.css       # Estilos del juego (dark theme)
-├── game.js         # Toda la lógica del Tetris (~300 líneas)
+├── game.js         # Toda la lógica del Tetris (~1000 líneas)
 └── README.md
 ```
 
@@ -174,7 +193,7 @@ Algunos parámetros fáciles de tunear en `game.js`:
 | `COLS`         | Columnas del tablero                     | `10`                  |
 | `ROWS`         | Filas del tablero                        | `20`                  |
 | `BLOCK`        | Tamaño en píxeles de cada celda          | `30`                  |
-| `COLORS`       | Paleta de colores por tipo de pieza      | 7 colores             |
+| `COLORS`       | Paleta de colores por tipo de celda      | 14 colores            |
 | `LINE_SCORES`  | Puntos por 1, 2, 3 o 4 líneas eliminadas | `[0,100,300,500,800]` |
 | `dropInterval` | Velocidad inicial de caída en ms         | `1000`                |
 
