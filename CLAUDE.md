@@ -16,15 +16,20 @@ python -m http.server 8000   # then http://localhost:8000
 
 ## Architecture
 
-All logic lives in `game.js` as top-level functions sharing module-level mutable state (`board`, `current`, `next`, `score`, `lines`, `level`, `paused`, `gameOver`, `dropInterval`, `animId`, ...). `init()` resets everything and is also the restart handler.
+All logic lives in `game.js` (sectioned by comment banners) as top-level functions sharing module-level mutable state (`board`, `current`, `queue`, `hold`, `score`, `lines`, `level`, `combo`, `b2b`, `energy`, `mode`, `gameTime`, `paused`, `gameOver`, `menu`, ...). `init(mode)` resets everything and starts a game; the page boots into the mode menu (`showModeMenu()`), and game over/victory re-shows it via `endGame(title, win)`.
 
 Key conventions spanning multiple functions:
 
-- **Cell values = piece type = color index.** `PIECES[type]` matrices store `type` (1–7) in filled cells; `merge()` copies those values into `board`, and `drawBlock()` looks them up in `COLORS`. Adding/reordering pieces requires keeping `PIECES` and `COLORS` indices aligned (`randomPiece()` uses `PIECES.length - 1`). Type 8 = `NUT` (3×3 ring with empty center; `drawNutHole()` draws its circle while falling/preview — once locked the center is a real empty cell).
-- **Rotation** = `rotateCW()` on the square shape matrix; `tryRotate()` applies simple horizontal kicks `[0,-1,1,-2,2]` (not SRS).
-- **Piece lifecycle:** gravity in `loop()` / `softDrop()` / `hardDrop()` → `lockPiece()` → `merge()` → `clearLines()` (updates score/level/`dropInterval`) → `spawn()` (promotes `next`, game over if spawn collides).
-- **Game loop:** `requestAnimationFrame` with a `dropAccum` time accumulator. Pause/game over work by `cancelAnimationFrame(animId)`; unpause restarts via `loop(performance.now())`. `endGame()` cancels the pending frame, but since game over is usually triggered from inside `loop()` (whose frame is already running), `loop()` itself returns early when `gameOver` is set instead of scheduling another frame.
-- **HUD** is DOM (`#score`, `#lines`, `#level`); `updateHUD()` runs after every keydown. Next-piece preview is a separate 120×120 canvas drawn by `drawNext()` on spawn.
+- **Cell values = piece type = color index.** `PIECES[type]` matrices store `type` in filled cells; `merge()` copies them into `board`, `drawBlock()` looks them up in `COLORS`/`COLORS_LIGHT`. Keep `PIECES`, `COLORS`, `COLORS_LIGHT`, `PIECE_WEIGHTS` index-aligned. Types: 1–7 tetrominoes, 8 `NUT` (3×3 ring; `drawNutHole()` draws its circle), 9 `+`, 10 U, 11 Y, 12 `SINGLE` (1×1, only given as reward after a Tetris), 13 `GARBAGE` and 14 `WILD` (board-only, `PIECES` entry is `null`, weight 0). `WILD` is drawn as a rainbow gradient.
+- **Pieces** are `{ type, shape, power, x, y }` built by `makePiece()`. `power` (key of `POWERS`) is set on a queued piece every `LINES_PER_POWER` lines by `grantPower()` and applied in `applyPower()` after `merge()`, before `clearLines()`.
+- **Queue:** `queue` (≥ `QUEUE_SIZE`) replaces a single `next`; `queue[0]` is the next piece. `spawn()` shifts it and refills. `drawPreviews()` redraws next/hold/queue canvases — call it whenever `queue` or `hold` changes.
+- **Rotation** = `rotateCW()`/`rotateCCW()`; `tryRotate(dir)` applies horizontal kicks `[0,-1,1,-2,2]` (not SRS), flips `dir` when `rotationInverted()`, and sets `lastMoveRotate` (used by `isTSpin()`). Any move/drop clears it.
+- **Piece lifecycle:** gravity in `loop()` / `softDrop()` / `hardDrop()` → `lockPiece()` (saves `snapshot` for the Undo ability) → `merge()` → `applyPower()` → `clearLines(tspin)` (all scoring: combo multiplier, T-spin, B2B, perfect clear, wildcards, energy, level/`dropInterval`, Tetris reward, power grants, effects/sfx) → `checkObjective()` (mode victory) → `spawn()`.
+- **Time:** every timer (sprint clock, garbage rows, freeze, slow, floating texts/flashes) uses `gameTime`, which only advances in `loop()`, so pause/menus stop them. Don't use `performance.now()` for game timers.
+- **Game loop:** `requestAnimationFrame`; `loop()` returns early when `paused || gameOver`, `resume()` restarts it. Game over can trigger inside `loop()`/`lockPiece()`/`tickMode()` — check `gameOver` after those calls.
+- **Overlay** (`showOverlay({...})`) is shared by mode menu, pause, ability menu (`menu === 'abilities'`) and game over. Mode/ability buttons are generated from `MODES`/`ABILITIES`.
+- **HUD** is DOM, refreshed by `updateHUD()` every frame and after each keydown.
+- **Sound:** `sfx(name)` synthesizes WebAudio tones (no assets); mute persisted in `localStorage` like the theme.
 
 ## Coupled constants
 
