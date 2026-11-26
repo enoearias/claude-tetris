@@ -15,6 +15,18 @@ const COLORS = [
   '#ffb74d', // L - orange
 ];
 
+// Paleta algo más intensa para fondo claro (mismos índices que COLORS)
+const COLORS_LIGHT = [
+  null,
+  '#00acc1', // I
+  '#f9a825', // O
+  '#9c27b0', // T
+  '#43a047', // S
+  '#e53935', // Z
+  '#1e88e5', // J
+  '#fb8c00', // L
+];
+
 const PIECES = [
   null,
   [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], // I
@@ -39,6 +51,10 @@ const overlay = document.getElementById('overlay');
 const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
+const themeBtn = document.getElementById('theme-btn');
+
+const THEME_KEY = 'tetris-theme';
+let theme = 'dark';
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 
@@ -158,7 +174,7 @@ function updateHUD() {
 
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
-  const color = COLORS[colorIndex];
+  const color = (theme === 'light' ? COLORS_LIGHT : COLORS)[colorIndex];
   context.globalAlpha = alpha ?? 1;
   context.fillStyle = color;
   context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
@@ -169,7 +185,7 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
 }
 
 function drawGrid() {
-  ctx.strokeStyle = '#22222e';
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid').trim();
   ctx.lineWidth = 0.5;
   for (let c = 1; c < COLS; c++) {
     ctx.beginPath();
@@ -216,6 +232,18 @@ function drawNext() {
   for (let r = 0; r < shape.length; r++)
     for (let c = 0; c < shape[r].length; c++)
       drawBlock(nextCtx, offX + c, offY + r, shape[r][c], NB);
+}
+
+function applyTheme(newTheme) {
+  theme = newTheme;
+  document.documentElement.dataset.theme = theme;
+  themeBtn.textContent = theme === 'dark' ? '☀ Modo claro' : '🌙 Modo oscuro';
+  try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* almacenamiento no disponible */ }
+  // Redibujar aunque el juego esté en pausa o terminado
+  if (current && next) {
+    draw();
+    drawNext();
+  }
 }
 
 function endGame() {
@@ -301,4 +329,13 @@ document.addEventListener('keydown', e => {
 
 restartBtn.addEventListener('click', init);
 
+themeBtn.addEventListener('click', () => {
+  applyTheme(theme === 'dark' ? 'light' : 'dark');
+  themeBtn.blur(); // evita que Space active el botón en vez de la caída rápida
+});
+
+let savedTheme = null;
+try { savedTheme = localStorage.getItem(THEME_KEY); } catch (e) { /* ignorar */ }
+
 init();
+applyTheme(savedTheme === 'light' ? 'light' : 'dark');
