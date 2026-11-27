@@ -156,11 +156,25 @@ const overlayScore = document.getElementById('overlay-score');
 const modeMenu = document.getElementById('mode-menu');
 const abilityMenu = document.getElementById('ability-menu');
 const restartBtn = document.getElementById('restart-btn');
+const pauseMenu = document.getElementById('pause-menu');
 const themeBtn = document.getElementById('theme-btn');
 const soundBtn = document.getElementById('sound-btn');
+const recordsEl = document.getElementById('records');
+const recordsBody = document.getElementById('records-body');
+const recordsBests = document.getElementById('records-bests');
+const nameForm = document.getElementById('name-form');
+const nameInput = document.getElementById('name-input');
+const resetRecordsBtn = document.getElementById('reset-records-btn');
+const skinBtn = document.getElementById('skin-btn');
 
 const THEME_KEY = 'tetris-theme';
 const MUTE_KEY = 'tetris-muted';
+const RECORDS_KEY = 'tetris-records';
+const BESTS_KEY = 'tetris-bests';
+const NAME_KEY = 'tetris-last-name';
+const MAX_RECORDS = 5;
+const NAME_MAX = 12;
+const DEFAULT_NAME = 'Jugador';
 let theme = 'dark';
 let muted = false;
 
@@ -169,10 +183,19 @@ let mode = 'clasico', started = false, menu = null; // menu: null | 'modes' | 'p
 let gameTime = 0;                                    // ms de juego (no avanza en pausa)
 let hold, holdUsed, holdCharges;
 let combo, b2b, lastMoveRotate;
+let maxCombo = 0;
+let editingRecordId = null; // récord recién guardado cuyo nombre se puede editar
+let nameFocusAt = 0;        // instante (ms) en que se enfocó el campo de nombre
 let linesSincePower, frozenUntil, slowUntil;
 let energy, queueReveal, snapshot;
 let nextGarbageAt, revealUntil;
 let floats = [], flashes = [];
+
+const START_LEVEL_KEY = 'tetris-start-level';
+const MAX_START_LEVEL = 15;
+let startLevel = 1;     // preferencia para la próxima partida
+let gameStartLevel = 1; // nivel con el que empezó la partida actual
+let ignoreRepeat = false; // tras reanudar, ignora la auto-repetición de teclas mantenidas
 
 // ---------------------------------------------------------------------------
 // Piezas
@@ -395,6 +418,7 @@ function clearLines(tspin) {
   if (n) {
     const difficult = n === 4 || tspin;
     combo++;
+    maxCombo = Math.max(maxCombo, combo);
     if (difficult && b2b) { points = Math.floor(points * 1.5); labels.push('B2B ×1.5'); }
     b2b = difficult;
     if (combo > 1) { points *= combo; labels.push(`COMBO ×${combo}`); }
@@ -408,7 +432,7 @@ function clearLines(tspin) {
     lines += n;
     linesSincePower += n;
     energy = Math.min(100, energy + n * ENERGY_PER_LINE + (difficult ? ENERGY_PER_LINE : 0));
-    level = Math.floor(lines / 10) + 1;
+    level = gameStartLevel + Math.floor(lines / 10);
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
 
     if (n === 4) {
@@ -464,7 +488,7 @@ function takeSnapshot() {
     current: makePiece(current.type, current.power),
     queue: queue.map(clonePiece),
     hold: clonePiece(hold),
-    score, lines, level, dropInterval, combo, b2b, linesSincePower, holdCharges,
+    score, lines, level, dropInterval, combo, maxCombo, b2b, linesSincePower, holdCharges,
   };
 }
 
@@ -473,7 +497,7 @@ function restoreSnapshot(s) {
   current = s.current;
   queue = s.queue;
   hold = s.hold;
-  ({ score, lines, level, dropInterval, combo, b2b, linesSincePower, holdCharges } = s);
+  ({ score, lines, level, dropInterval, combo, maxCombo, b2b, linesSincePower, holdCharges } = s);
   holdUsed = false;
   lastMoveRotate = false;
   drawPreviews();
@@ -780,34 +804,203 @@ function updateHUD() {
   queueSection.classList.toggle('hidden', queueReveal <= 0);
 }
 
+// ---------------------------------------------------------------------------
+// Skins: paleta (index-aligned con COLORS) + función de dibujo de bloque
+// ---------------------------------------------------------------------------
+
+const SKIN_KEY = 'tetris-skin';
+const RAINBOW = ['#ff5252', '#ffd740', '#69f0ae', '#40c4ff', '#e040fb'];
+
+const NEON_COLORS = [
+  null,
+  '#00ffff', // I
+  '#ffff00', // O
+  '#d000ff', // T
+  '#39ff14', // S
+  '#ff073a', // Z
+  '#1f51ff', // J
+  '#ff8c00', // L
+  '#c0c0ff', // N
+  '#ff10f0', // +
+  '#ccff00', // U
+  '#00ffaa', // Y
+  '#fffb96', // single
+  '#55557a', // basura
+  '#ffffff', // comodín
+];
+
+const PASTEL_COLORS = [
+  null,
+  '#a0e7ef', // I
+  '#fff1a8', // O
+  '#dcb8f0', // T
+  '#b5e8b0', // S
+  '#f7b2b2', // Z
+  '#b8d8fa', // J
+  '#ffd1a1', // L
+  '#d3dbe0', // N
+  '#f8bbd9', // +
+  '#d4ecb0', // U
+  '#a8ddd5', // Y
+  '#fffbc8', // single
+  '#8a8fa0', // basura
+  '#ffffff', // comodín
+];
+
+const PASTEL_COLORS_LIGHT = [
+  null,
+  '#7fd6e2', // I
+  '#f5d76e', // O
+  '#c99ae3', // T
+  '#8fd18a', // S
+  '#ee9393', // Z
+  '#8fbff0', // J
+  '#f6b77a', // L
+  '#aab6be', // N
+  '#ef93bd', // +
+  '#b5d986', // U
+  '#80c7bd', // Y
+  '#f2e27a', // single
+  '#b4b8c4', // basura
+  '#000000', // comodín
+];
+
+const PIXEL_COLORS = [
+  null,
+  '#3cbcfc', // I
+  '#fcc800', // O
+  '#a044f0', // T
+  '#58d854', // S
+  '#f83800', // Z
+  '#0058f8', // J
+  '#fca044', // L
+  '#bcbcbc', // N
+  '#f878f8', // +
+  '#b8f818', // U
+  '#00a8a8', // Y
+  '#fce0a8', // single
+  '#585858', // basura
+  '#ffffff', // comodín
+];
+
+// Retro: bloque plano con franja de brillo (estilo original)
+function drawBlockRetro(context, px, py, s, fill) {
+  context.fillStyle = fill;
+  context.fillRect(px, py, s, s);
+  context.fillStyle = 'rgba(255,255,255,0.12)';
+  context.fillRect(px, py, s, 4);
+}
+
+// Neon: interior translúcido + borde brillante con resplandor (shadowBlur)
+function drawBlockNeon(context, px, py, s, fill, color) {
+  const a = context.globalAlpha;
+  context.shadowColor = color;
+  context.shadowBlur = Math.max(4, s * 0.45);
+  context.globalAlpha = a * 0.3;
+  context.fillStyle = fill;
+  context.fillRect(px, py, s, s);
+  context.globalAlpha = a;
+  context.strokeStyle = fill;
+  context.lineWidth = Math.max(1.5, s / 12);
+  context.strokeRect(px + 1, py + 1, s - 2, s - 2);
+}
+
+// Trazado de rectángulo redondeado con arcos (no depende de roundRect)
+function roundedRectPath(context, x, y, w, h, r) {
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + w, y, x + w, y + h, r);
+  context.arcTo(x + w, y + h, x, y + h, r);
+  context.arcTo(x, y + h, x, y, r);
+  context.arcTo(x, y, x + w, y, r);
+  context.closePath();
+}
+
+// Pastel: bloque redondeado con brillo suave arriba
+function drawBlockPastel(context, px, py, s, fill) {
+  roundedRectPath(context, px, py, s, s, s * 0.28);
+  context.fillStyle = fill;
+  context.fill();
+  context.strokeStyle = 'rgba(0,0,0,0.12)';
+  context.lineWidth = 1;
+  context.stroke();
+  roundedRectPath(context, px + s * 0.18, py + s * 0.12, s * 0.64, s * 0.22, s * 0.11);
+  context.fillStyle = 'rgba(255,255,255,0.45)';
+  context.fill();
+}
+
+// Pixel art: bisel pixelado + tramado (dithering) en damero + píxel de brillo
+function drawBlockPixel(context, px, py, s, fill) {
+  const u = Math.max(2, Math.floor(s / 7)); // tamaño de "píxel" (4 px a 30, 2 px a 15)
+  context.fillStyle = fill;
+  context.fillRect(px, py, s, s);
+  context.fillStyle = 'rgba(255,255,255,0.35)';
+  context.fillRect(px, py, s, u);
+  context.fillRect(px, py, u, s);
+  context.fillStyle = 'rgba(0,0,0,0.35)';
+  context.fillRect(px, py + s - u, s, u);
+  context.fillRect(px + s - u, py, u, s);
+  context.fillStyle = 'rgba(0,0,0,0.14)';
+  const n = Math.floor((s - 2 * u) / u);
+  for (let j = 0; j < n; j++)
+    for (let i = 0; i < n; i++)
+      if ((i + j) % 2) context.fillRect(px + u + i * u, py + u + j * u, u, u);
+  context.fillStyle = 'rgba(255,255,255,0.7)';
+  context.fillRect(px + u, py + u, u, u);
+}
+
+// colors/colorsLight: paleta para tema oscuro/claro; wild: paradas del degradado del comodín
+const SKINS = {
+  retro:  { name: 'Retro',     colors: COLORS,        colorsLight: COLORS_LIGHT,        wild: RAINBOW, drawBlock: drawBlockRetro },
+  neon:   { name: 'Neon',      colors: NEON_COLORS,   colorsLight: NEON_COLORS,         wild: ['#ff073a', '#ffff00', '#39ff14', '#00ffff', '#ff10f0'], drawBlock: drawBlockNeon, glow: true, darkBoard: true },
+  pastel: { name: 'Pastel',    colors: PASTEL_COLORS, colorsLight: PASTEL_COLORS_LIGHT, wild: ['#ffb3b3', '#ffe9a8', '#b9f5cf', '#a8dcff', '#e6b3ff'], drawBlock: drawBlockPastel },
+  pixel:  { name: 'Pixel art', colors: PIXEL_COLORS,  colorsLight: PIXEL_COLORS,        wild: RAINBOW, drawBlock: drawBlockPixel, dotGrid: true },
+};
+let skin = 'retro';
+
+function skinColor(colorIndex) {
+  const sk = SKINS[skin];
+  return (theme === 'light' ? sk.colorsLight : sk.colors)[colorIndex];
+}
+
+// Fondo del canvas oscuro (tema oscuro o skin con fondo negro)
+function darkCanvas() {
+  return theme !== 'light' || !!SKINS[skin].darkBoard;
+}
+
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
   const px = x * size + 1, py = y * size + 1, s = size - 2;
-  context.globalAlpha = alpha ?? 1;
+  const sk = SKINS[skin];
+  let fill, color;
   if (colorIndex === WILD) {
-    const g = context.createLinearGradient(px, py, px + s, py + s);
-    ['#ff5252', '#ffd740', '#69f0ae', '#40c4ff', '#e040fb'].forEach((c, i) => g.addColorStop(i / 4, c));
-    context.fillStyle = g;
+    fill = context.createLinearGradient(px, py, px + s, py + s);
+    sk.wild.forEach((c, i) => fill.addColorStop(i / (sk.wild.length - 1), c));
+    color = '#ffffff';
   } else {
-    context.fillStyle = (theme === 'light' ? COLORS_LIGHT : COLORS)[colorIndex];
+    fill = color = skinColor(colorIndex);
   }
-  context.fillRect(px, py, s, s);
-  // highlight
-  context.fillStyle = 'rgba(255,255,255,0.12)';
-  context.fillRect(px, py, s, 4);
-  context.globalAlpha = 1;
+  context.save();
+  context.globalAlpha = alpha ?? 1;
+  sk.drawBlock(context, px, py, s, fill, color);
+  context.restore();
 }
 
 // Dibuja el círculo del hueco de la tuerca en la celda central (x+1, y+1) de la pieza
 function drawNutHole(context, x, y, size, alpha) {
-  const color = (theme === 'light' ? COLORS_LIGHT : COLORS)[NUT];
+  const color = skinColor(NUT);
+  context.save();
   context.globalAlpha = alpha ?? 1;
+  if (SKINS[skin].glow) {
+    context.shadowColor = color;
+    context.shadowBlur = size * 0.4;
+  }
   context.strokeStyle = color;
   context.lineWidth = Math.max(2, size / 8);
   context.beginPath();
   context.arc((x + 1.5) * size, (y + 1.5) * size, size * 0.35, 0, Math.PI * 2);
   context.stroke();
-  context.globalAlpha = 1;
+  context.restore();
 }
 
 // Pieza completa en (ox, oy) en unidades de celda: bloques + hueco de tuerca + marca de power-up
@@ -821,7 +1014,7 @@ function drawPiece(context, piece, ox, oy, size, alpha = 1, decorate = true) {
 
   context.save();
   context.globalAlpha = alpha;
-  context.strokeStyle = theme === 'light' ? '#000' : '#fff';
+  context.strokeStyle = darkCanvas() ? '#fff' : '#000';
   context.lineWidth = 2;
   let minC = Infinity, maxC = -Infinity, minR = Infinity, maxR = -Infinity;
   for (let r = 0; r < shape.length; r++)
@@ -834,13 +1027,21 @@ function drawPiece(context, piece, ox, oy, size, alpha = 1, decorate = true) {
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   context.font = `${Math.floor(size * 0.8)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-  context.fillStyle = theme === 'light' ? '#000' : '#fff';
+  context.fillStyle = darkCanvas() ? '#fff' : '#000';
   context.fillText(POWERS[piece.power].icon, (ox + (minC + maxC + 1) / 2) * size, (oy + (minR + maxR + 1) / 2) * size);
   context.restore();
 }
 
 function drawGrid() {
-  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid').trim();
+  const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--grid').trim();
+  if (SKINS[skin].dotGrid) { // pixel art: puntos en las intersecciones
+    ctx.fillStyle = gridColor;
+    for (let c = 1; c < COLS; c++)
+      for (let r = 1; r < ROWS; r++)
+        ctx.fillRect(c * BLOCK - 1, r * BLOCK - 1, 2, 2);
+    return;
+  }
+  ctx.strokeStyle = gridColor;
   ctx.lineWidth = 0.5;
   for (let c = 1; c < COLS; c++) {
     ctx.beginPath();
@@ -913,12 +1114,138 @@ function applyTheme(newTheme) {
   if (queue) drawPreviews();
 }
 
+function applySkin(name) {
+  skin = Object.hasOwn(SKINS, name) ? name : 'retro';
+  document.documentElement.dataset.skin = skin;
+  skinBtn.textContent = `🎨 Skin: ${SKINS[skin].name}`;
+  try { localStorage.setItem(SKIN_KEY, skin); } catch (e) { /* almacenamiento no disponible */ }
+  // Redibujar aunque el juego esté en pausa o terminado (el fondo/rejilla dependen de CSS)
+  draw();
+  if (queue) drawPreviews();
+}
+
+// ---------------------------------------------------------------------------
+// Records (localStorage)
+// ---------------------------------------------------------------------------
+
+function cleanName(name) {
+  // Corta por puntos de código para no partir emojis
+  return (typeof name === 'string' ? [...name.trim()].slice(0, NAME_MAX).join('').trim() : '') || DEFAULT_NAME;
+}
+
+function loadRecords() {
+  try {
+    const data = JSON.parse(localStorage.getItem(RECORDS_KEY));
+    if (!Array.isArray(data)) return [];
+    return data
+      .filter(r => r && typeof r === 'object' && Number.isFinite(r.score))
+      .map(r => ({
+        id: Number.isFinite(r.id) ? r.id : 0,
+        name: cleanName(r.name),
+        score: r.score,
+        lines: Number.isFinite(r.lines) ? r.lines : 0,
+        maxCombo: Number.isFinite(r.maxCombo) ? r.maxCombo : 0,
+        mode: typeof r.mode === 'string' ? r.mode : 'clasico',
+        date: Number.isFinite(r.date) ? r.date : 0,
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_RECORDS);
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveRecords(records) {
+  try { localStorage.setItem(RECORDS_KEY, JSON.stringify(records)); } catch (e) { /* almacenamiento no disponible */ }
+}
+
+function loadBests() {
+  try {
+    const data = JSON.parse(localStorage.getItem(BESTS_KEY));
+    if (data && typeof data === 'object')
+      return {
+        maxCombo: Number.isFinite(data.maxCombo) ? data.maxCombo : 0,
+        maxLines: Number.isFinite(data.maxLines) ? data.maxLines : 0,
+      };
+  } catch (e) { /* ignorar */ }
+  return { maxCombo: 0, maxLines: 0 };
+}
+
+function loadLastName() {
+  try { return cleanName(localStorage.getItem(NAME_KEY)); } catch (e) { return DEFAULT_NAME; }
+}
+
+// Guarda la partida terminada: actualiza las mejores marcas y, si entra en el top, la añade.
+// Devuelve { entry, rank } (rank empieza en 1) o null si no entra.
+function recordGame() {
+  const bests = loadBests();
+  bests.maxCombo = Math.max(bests.maxCombo, maxCombo);
+  bests.maxLines = Math.max(bests.maxLines, lines);
+  try { localStorage.setItem(BESTS_KEY, JSON.stringify(bests)); } catch (e) { /* almacenamiento no disponible */ }
+
+  if (score <= 0) return null;
+  const records = loadRecords();
+  if (records.length >= MAX_RECORDS && score <= records[records.length - 1].score) return null;
+  const now = Date.now();
+  const id = Math.max(now, ...records.map(r => r.id + 1)); // único aunque el reloj retroceda
+  const entry = { id, name: loadLastName(), score, lines, maxCombo, mode, date: now };
+  records.push(entry);
+  records.sort((a, b) => b.score - a.score);
+  saveRecords(records.slice(0, MAX_RECORDS));
+  return { entry, rank: records.indexOf(entry) + 1 };
+}
+
+function renameRecord(id, name) {
+  try { localStorage.setItem(NAME_KEY, name); } catch (e) { /* almacenamiento no disponible */ }
+  const records = loadRecords();
+  const entry = records.find(r => r.id === id);
+  if (!entry) return;
+  entry.name = name;
+  saveRecords(records);
+}
+
+function renderRecords(highlightId = null) {
+  const records = loadRecords();
+  recordsBody.replaceChildren();
+  if (!records.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.className = 'records-empty';
+    td.textContent = 'Aún no hay records';
+    tr.appendChild(td);
+    recordsBody.appendChild(tr);
+  }
+  records.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    if (highlightId !== null && r.id === highlightId) tr.className = 'highlight';
+    const cells = [
+      i + 1,
+      r.name,
+      r.score.toLocaleString(),
+      r.lines,
+      r.maxCombo > 1 ? `×${r.maxCombo}` : '–',
+      MODES[r.mode] ? MODES[r.mode].name : r.mode,
+    ];
+    for (const value of cells) {
+      const td = document.createElement('td');
+      td.textContent = value; // nunca innerHTML con datos del usuario
+      tr.appendChild(td);
+    }
+    recordsBody.appendChild(tr);
+  });
+  const bests = loadBests();
+  const comboText = bests.maxCombo > 1 ? `×${bests.maxCombo}` : '–';
+  recordsBests.textContent = `Mejor combo: ${comboText} · Líneas máx.: ${bests.maxLines}`;
+}
+
 // ---------------------------------------------------------------------------
 // Overlay, estados y bucle
 // ---------------------------------------------------------------------------
 
 // variant: 'win' (verde) | 'lose' (rojo) | null (color de acento)
-function showOverlay({ title, text = '', modes = false, abilities = false, restart = false, variant = null }) {
+function showOverlay({ title, text = '', modes = false, abilities = false, restart = false, variant = null, pause = false, records = false }) {
+  pauseMenu.classList.toggle('hidden', !pause);
   overlayTitle.textContent = title;
   overlayTitle.classList.toggle('win', variant === 'win');
   overlayTitle.classList.toggle('lose', variant === 'lose');
@@ -926,6 +1253,10 @@ function showOverlay({ title, text = '', modes = false, abilities = false, resta
   modeMenu.classList.toggle('hidden', !modes);
   abilityMenu.classList.toggle('hidden', !abilities);
   restartBtn.classList.toggle('hidden', !restart);
+  recordsEl.classList.toggle('hidden', !records);
+  nameForm.classList.add('hidden');
+  editingRecordId = null;
+  if (records) renderRecords();
   overlay.classList.remove('hidden');
 }
 
@@ -935,7 +1266,7 @@ function hideOverlay() {
 
 function showModeMenu() {
   menu = 'modes';
-  showOverlay({ title: 'ELIGE UN MODO', modes: true });
+  showOverlay({ title: 'ELIGE UN MODO', modes: true, records: true });
 }
 
 function endGame(title, win = false) {
@@ -947,8 +1278,19 @@ function endGame(title, win = false) {
   sfx(win ? 'win' : 'gameover');
   let text = `Puntuación: ${score.toLocaleString()}`;
   if (win && mode === 'sprint') text += ` · Tiempo ${formatTime(gameTime)}`;
+  const record = recordGame();
+  if (record) text += ` · ¡Nuevo récord #${record.rank}!`;
   menu = 'modes';
-  showOverlay({ title, text, modes: true, restart: true, variant: win ? 'win' : 'lose' });
+  showOverlay({ title, text, modes: true, restart: true, variant: win ? 'win' : 'lose', records: true });
+  if (record) {
+    renderRecords(record.entry.id);
+    editingRecordId = record.entry.id;
+    nameInput.value = record.entry.name;
+    nameForm.classList.remove('hidden');
+    nameFocusAt = performance.now();
+    nameInput.focus();
+    nameInput.select();
+  }
 }
 
 function resume() {
@@ -962,13 +1304,127 @@ function togglePause() {
   if (gameOver || menu === 'abilities') return;
   if (paused) {
     menu = null;
+    ignoreRepeat = true;
     hideOverlay();
     resume();
   } else {
     paused = true;
     menu = 'pause';
     cancelAnimationFrame(animId);
-    showOverlay({ title: 'PAUSA' });
+    pauseView = 'main';
+    pauseSel = 0;
+    renderPauseMenu();
+    showOverlay({ title: 'PAUSA', text: '↑↓ elegir · Enter aceptar · P/Esc reanudar', pause: true });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Menú de pausa
+// ---------------------------------------------------------------------------
+
+const PAUSE_OPTIONS = [
+  { id: 'resume',   name: 'Reanudar',      desc: 'Volver al juego' },
+  { id: 'restart',  name: 'Reiniciar',     desc: 'Nueva partida en el modo actual' },
+  { id: 'controls', name: 'Ver controles', desc: 'Lista de teclas' },
+  { id: 'level',    name: 'Nivel inicial', desc: '← → para cambiar · próxima partida' },
+];
+
+const CONTROL_KEYS = [
+  ['← →', 'mover'],
+  ['↑ / X', 'rotar horario'],
+  ['Z', 'rotar antihorario'],
+  ['↓', 'bajar'],
+  ['Espacio', 'caída rápida'],
+  ['C / Shift', 'guardar pieza'],
+  ['E', 'habilidades (energía llena)'],
+  ['P / Esc', 'pausa'],
+  ['M', 'sonido'],
+];
+
+let pauseView = 'main', pauseSel = 0; // pauseView: 'main' | 'controls'
+
+function setStartLevel(n) {
+  startLevel = Math.min(MAX_START_LEVEL, Math.max(1, n));
+  try { localStorage.setItem(START_LEVEL_KEY, String(startLevel)); } catch (e) { /* almacenamiento no disponible */ }
+  if (menu === 'pause') renderPauseMenu();
+}
+
+function renderPauseMenu() {
+  pauseMenu.innerHTML = '';
+  if (pauseView === 'controls') {
+    const list = document.createElement('ul');
+    list.className = 'pause-controls';
+    for (const [keys, action] of CONTROL_KEYS) {
+      const li = document.createElement('li');
+      li.innerHTML = `<kbd>${keys}</kbd><span>${action}</span>`;
+      list.appendChild(li);
+    }
+    pauseMenu.appendChild(list);
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'menu-btn selected';
+    back.innerHTML = '<strong>Volver</strong><small>Enter / Retroceso</small>';
+    back.addEventListener('click', () => { back.blur(); pauseView = 'main'; renderPauseMenu(); });
+    pauseMenu.appendChild(back);
+    return;
+  }
+  PAUSE_OPTIONS.forEach((opt, i) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'menu-btn' + (i === pauseSel ? ' selected' : '');
+    if (opt.id === 'level') {
+      btn.classList.add('level-row');
+      btn.innerHTML = `<strong>${opt.name}: <span class="level-value">${startLevel}</span></strong><small>${opt.desc}</small>` +
+        '<span class="level-ctrl"><span data-d="-1">−</span><span data-d="1">+</span></span>';
+      btn.addEventListener('click', ev => {
+        btn.blur();
+        pauseSel = i;
+        const d = Number(ev.target.dataset && ev.target.dataset.d);
+        if (d) setStartLevel(startLevel + d);
+        else renderPauseMenu();
+      });
+    } else {
+      btn.innerHTML = `<strong>${opt.name}</strong><small>${opt.desc}</small>`;
+      btn.addEventListener('click', () => { btn.blur(); pauseSel = i; activatePauseOption(opt.id); });
+    }
+    pauseMenu.appendChild(btn);
+  });
+}
+
+function activatePauseOption(id) {
+  if (id === 'resume') togglePause();
+  else if (id === 'restart') init(mode);
+  else if (id === 'controls') { pauseView = 'controls'; renderPauseMenu(); }
+}
+
+function handlePauseKey(e) {
+  if (e.repeat) return; // una tecla mantenida desde el juego no navega el menú
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    togglePause();
+    return;
+  }
+  if (pauseView === 'controls') {
+    if (['Enter', 'NumpadEnter', 'Space', 'Backspace'].includes(e.code)) {
+      e.preventDefault();
+      pauseView = 'main';
+      renderPauseMenu();
+    }
+    return;
+  }
+  const n = PAUSE_OPTIONS.length;
+  switch (e.code) {
+    case 'ArrowUp':   pauseSel = (pauseSel + n - 1) % n; renderPauseMenu(); break;
+    case 'ArrowDown': pauseSel = (pauseSel + 1) % n; renderPauseMenu(); break;
+    case 'ArrowLeft':
+    case 'ArrowRight':
+      if (PAUSE_OPTIONS[pauseSel].id === 'level') setStartLevel(startLevel + (e.code === 'ArrowRight' ? 1 : -1));
+      break;
+    case 'Enter':
+    case 'NumpadEnter':
+    case 'Space':
+      e.preventDefault();
+      activatePauseOption(PAUSE_OPTIONS[pauseSel].id);
+      break;
   }
 }
 
@@ -1008,16 +1464,20 @@ function init(newMode = mode) {
   if (mode === 'fijo') applyFixedPattern();
   score = 0;
   lines = 0;
-  level = 1;
+  // Inverso depende de subir hasta INVERSE_LEVEL: siempre empieza en 1
+  gameStartLevel = mode === 'inverso' ? 1 : startLevel;
+  ignoreRepeat = true; // p.ej. Espacio mantenido tras «Reiniciar» no debe hacer caída rápida
+  level = gameStartLevel;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   dropAccum = 0;
   gameTime = 0;
   hold = null;
   holdUsed = false;
   holdCharges = 0;
   combo = 0;
+  maxCombo = 0;
   b2b = false;
   lastMoveRotate = false;
   linesSincePower = 0;
@@ -1043,6 +1503,8 @@ function init(newMode = mode) {
 // ---------------------------------------------------------------------------
 
 document.addEventListener('keydown', e => {
+  // Escribir en un campo de texto (nombre del récord) no debe controlar el juego
+  if (e.target instanceof Element && e.target.matches('input, textarea')) return;
   if (['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Space'].includes(e.code)) e.preventDefault();
   if (e.code === 'KeyM') { applyMute(!muted); return; }
 
@@ -1053,8 +1515,14 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (!started) return;
-  if (e.code === 'KeyP') { togglePause(); return; }
+  if (menu === 'pause') { handlePauseKey(e); return; } // bloquea las entradas del juego
+  if (e.code === 'KeyP' || e.code === 'Escape') { if (!e.repeat) togglePause(); return; }
   if (paused || gameOver) return;
+  // Tras reanudar, una tecla mantenida desde el menú no debe mover la pieza
+  if (ignoreRepeat) {
+    if (e.repeat) return;
+    ignoreRepeat = false;
+  }
 
   switch (e.code) {
     case 'ArrowLeft':  move(-1); break;
@@ -1096,6 +1564,40 @@ ABILITIES.forEach((ab, i) => {
 
 restartBtn.addEventListener('click', () => { restartBtn.blur(); init(mode); });
 
+function saveRecordName() {
+  if (editingRecordId === null) return;
+  renameRecord(editingRecordId, cleanName(nameInput.value));
+  renderRecords(editingRecordId);
+}
+
+nameForm.addEventListener('submit', e => {
+  e.preventDefault();
+  saveRecordName();
+  nameInput.blur();
+  nameForm.classList.add('hidden');
+});
+
+// Guarda también al salir del campo (p. ej. al pulsar Reiniciar sin dar a Guardar)
+nameInput.addEventListener('change', saveRecordName);
+
+// Ignora teclas mantenidas o pulsadas justo al terminar la partida (Space, X, Z...)
+nameInput.addEventListener('keydown', e => {
+  if (e.repeat || performance.now() - nameFocusAt < 600) e.preventDefault();
+});
+
+resetRecordsBtn.addEventListener('click', () => {
+  resetRecordsBtn.blur();
+  if (!confirm('¿Borrar todos los records? Esta acción no se puede deshacer.')) return;
+  try {
+    localStorage.removeItem(RECORDS_KEY);
+    localStorage.removeItem(BESTS_KEY);
+  } catch (e) { /* almacenamiento no disponible */ }
+  nameForm.classList.add('hidden');
+  editingRecordId = null;
+  overlayScore.textContent = overlayScore.textContent.replace(/ · ¡Nuevo récord #\d+!$/, '');
+  renderRecords();
+});
+
 themeBtn.addEventListener('click', () => {
   applyTheme(theme === 'dark' ? 'light' : 'dark');
   themeBtn.blur(); // evita que Space active el botón en vez de la caída rápida
@@ -1111,7 +1613,21 @@ try {
   savedTheme = localStorage.getItem(THEME_KEY);
   savedMute = localStorage.getItem(MUTE_KEY);
 } catch (e) { /* ignorar */ }
+try {
+  const savedLevel = parseInt(localStorage.getItem(START_LEVEL_KEY), 10);
+  if (savedLevel >= 1 && savedLevel <= MAX_START_LEVEL) startLevel = savedLevel;
+} catch (e) { /* ignorar */ }
 
 applyTheme(savedTheme === 'light' ? 'light' : 'dark');
 applyMute(savedMute === '1');
+
+skinBtn.addEventListener('click', () => {
+  const names = Object.keys(SKINS);
+  applySkin(names[(names.indexOf(skin) + 1) % names.length]);
+  skinBtn.blur();
+});
+
+let savedSkin = null;
+try { savedSkin = localStorage.getItem(SKIN_KEY); } catch (e) { /* ignorar */ }
+applySkin(savedSkin);
 showModeMenu();

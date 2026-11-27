@@ -27,10 +27,10 @@ Key conventions spanning multiple functions:
 - **Piece lifecycle:** gravity in `loop()` / `softDrop()` / `hardDrop()` → `lockPiece()` (saves `snapshot` for the Undo ability) → `merge()` → `applyPower()` → `clearLines(tspin)` (all scoring: combo multiplier, T-spin, B2B, perfect clear, wildcards, energy, level/`dropInterval`, Tetris reward, power grants, effects/sfx) → `checkObjective()` (mode victory) → `spawn()`.
 - **Time:** every timer (sprint clock, garbage rows, freeze, slow, floating texts/flashes) uses `gameTime`, which only advances in `loop()`, so pause/menus stop them. Don't use `performance.now()` for game timers.
 - **Game loop:** `requestAnimationFrame`; `loop()` returns early when `paused || gameOver`, `resume()` restarts it. Game over can trigger inside `loop()`/`lockPiece()`/`tickMode()` — check `gameOver` after those calls.
-- **Overlay** (`showOverlay({...})`) is shared by mode menu, pause, ability menu (`menu === 'abilities'`) and game over. Mode/ability buttons are generated from `MODES`/`ABILITIES`.
+- **Overlay** (`showOverlay({...})`) is shared by mode menu, pause menu (`menu === 'pause'`, keys routed to `handlePauseKey()`, built by `renderPauseMenu()`), ability menu (`menu === 'abilities'`) and game over. Mode/ability buttons are generated from `MODES`/`ABILITIES`.
 - **HUD** is DOM, refreshed by `updateHUD()` every frame and after each keydown.
 - **Sound:** `sfx(name)` synthesizes WebAudio tones (no assets); mute persisted in `localStorage` like the theme.
 
 ## Coupled constants
 
-`COLS × BLOCK` and `ROWS × BLOCK` must match the `<canvas id="board">` `width`/`height` in `index.html` (currently 300×600). Level speed formula: `max(100, 1000 − (level − 1) × 90)` ms, duplicated as the initial `1000` in `init()`.
+`COLS × BLOCK` and `ROWS × BLOCK` must match the `<canvas id="board">` `width`/`height` in `index.html` (currently 300×600). Level speed formula: `max(100, 1000 − (level − 1) × 90)` ms, duplicated in `init()`. Levels start at `gameStartLevel` (pause-menu "Nivel inicial", `localStorage` `tetris-start-level`; forced to 1 in Inverso) and rise as `gameStartLevel + floor(lines / 10)` in `clearLines()`.
