@@ -56,6 +56,7 @@ Es una versión jugable del Tetris clásico con todas las mecánicas que esperar
   - ❄ **Congelar**: la pieza deja de caer durante 5 s.
 - **Modos desafío** (menú inicial): Clásico, Sprint 40 (40 líneas en 2 min), Basura (sube una fila cada 10 s), Tablero fijo (elimina los bloques grises), Invisible (las piezas desaparecen al caer) y Rotación inversa (desde nivel 5).
 - **Barra de energía**: se llena limpiando líneas. Llena, `E` abre el menú de habilidades (`1`–`5`): ver 5 próximas piezas, cambiar la pieza actual, ralentizar 10 s, deshacer la última colocación o +2 usos extra del hold.
+- **Marca PantherLAB**: logo, favicon, colores (amarillo `#ffcc00`, naranja `#ff6900`, negro/grises) y fuentes (Lato, Didact Gothic) de [PantherLAB](https://pantherlab.com.mx/). La skin **PantherLAB** es la predeterminada; las skins Retro, Neon, Pastel y Pixel art siguen disponibles con el botón 🎨.
 
 ---
 
@@ -179,6 +180,7 @@ Cuando una pieza recién generada ya colisiona al aparecer (`spawn`), se dispara
 ├── index.html      # Estructura del DOM y canvas
 ├── style.css       # Estilos del juego (dark theme)
 ├── game.js         # Toda la lógica del Tetris (~1000 líneas)
+├── assets/         # Logo e ícono de PantherLAB
 └── README.md
 ```
 
