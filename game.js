@@ -883,6 +883,55 @@ const PIXEL_COLORS = [
   '#ffffff', // comodín
 ];
 
+// PantherLAB: amarillo de marca (#ffcc00), naranja, blanco y grises
+const PANTHER_COLORS = [
+  null,
+  '#ffcc00', // I - amarillo de marca
+  '#ffe680', // O
+  '#ff9f1c', // T
+  '#f5f5f5', // S
+  '#ff6900', // Z
+  '#c9a400', // J
+  '#8e9096', // L
+  '#5a5a5a', // N
+  '#ffb900', // +
+  '#d4d4d4', // U
+  '#e0a800', // Y
+  '#fff3b0', // single
+  '#3e3e3e', // basura
+  '#ffffff', // comodín
+];
+
+const PANTHER_COLORS_LIGHT = [
+  null,
+  '#e6b800', // I
+  '#f5d040', // O
+  '#e08a00', // T
+  '#222222', // S
+  '#e65c00', // Z
+  '#a68700', // J
+  '#6d6f75', // L
+  '#3e3e3e', // N
+  '#f0a500', // +
+  '#9a9a9a', // U
+  '#c79500', // Y
+  '#f2dc6b', // single
+  '#b0b0b0', // basura
+  '#000000', // comodín
+];
+
+// PantherLAB: relleno con borde interior negro (estilo amarillo/negro de la marca) y brillo arriba
+function drawBlockPanther(context, px, py, s, fill) {
+  context.fillStyle = fill;
+  context.fillRect(px, py, s, s);
+  context.fillStyle = 'rgba(255,255,255,0.18)';
+  context.fillRect(px, py, s, Math.max(2, s / 8));
+  context.strokeStyle = 'rgba(0,0,0,0.55)';
+  context.lineWidth = Math.max(1, s / 14);
+  const inset = Math.max(2, s / 7);
+  context.strokeRect(px + inset, py + inset, s - inset * 2, s - inset * 2);
+}
+
 // Retro: bloque plano con franja de brillo (estilo original)
 function drawBlockRetro(context, px, py, s, fill) {
   context.fillStyle = fill;
@@ -951,12 +1000,13 @@ function drawBlockPixel(context, px, py, s, fill) {
 
 // colors/colorsLight: paleta para tema oscuro/claro; wild: paradas del degradado del comodín
 const SKINS = {
-  retro:  { name: 'Retro',     colors: COLORS,        colorsLight: COLORS_LIGHT,        wild: RAINBOW, drawBlock: drawBlockRetro },
+  pantherlab: { name: 'PantherLAB', colors: PANTHER_COLORS, colorsLight: PANTHER_COLORS_LIGHT, wild: ['#ffcc00', '#ff6900', '#222222', '#ffcc00'], drawBlock: drawBlockPanther },
+  retro: { name: 'Retro',     colors: COLORS,        colorsLight: COLORS_LIGHT,        wild: RAINBOW, drawBlock: drawBlockRetro },
   neon:   { name: 'Neon',      colors: NEON_COLORS,   colorsLight: NEON_COLORS,         wild: ['#ff073a', '#ffff00', '#39ff14', '#00ffff', '#ff10f0'], drawBlock: drawBlockNeon, glow: true, darkBoard: true },
   pastel: { name: 'Pastel',    colors: PASTEL_COLORS, colorsLight: PASTEL_COLORS_LIGHT, wild: ['#ffb3b3', '#ffe9a8', '#b9f5cf', '#a8dcff', '#e6b3ff'], drawBlock: drawBlockPastel },
   pixel:  { name: 'Pixel art', colors: PIXEL_COLORS,  colorsLight: PIXEL_COLORS,        wild: RAINBOW, drawBlock: drawBlockPixel, dotGrid: true },
 };
-let skin = 'retro';
+let skin = 'pantherlab';
 
 function skinColor(colorIndex) {
   const sk = SKINS[skin];
@@ -1115,7 +1165,7 @@ function applyTheme(newTheme) {
 }
 
 function applySkin(name) {
-  skin = Object.hasOwn(SKINS, name) ? name : 'retro';
+  skin = Object.hasOwn(SKINS, name) ? name : 'pantherlab';
   document.documentElement.dataset.skin = skin;
   skinBtn.textContent = `🎨 Skin: ${SKINS[skin].name}`;
   try { localStorage.setItem(SKIN_KEY, skin); } catch (e) { /* almacenamiento no disponible */ }
