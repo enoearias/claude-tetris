@@ -156,6 +156,7 @@ const overlayScore = document.getElementById('overlay-score');
 const modeMenu = document.getElementById('mode-menu');
 const abilityMenu = document.getElementById('ability-menu');
 const restartBtn = document.getElementById('restart-btn');
+const pauseMenu = document.getElementById('pause-menu');
 const themeBtn = document.getElementById('theme-btn');
 const soundBtn = document.getElementById('sound-btn');
 
@@ -173,6 +174,12 @@ let linesSincePower, frozenUntil, slowUntil;
 let energy, queueReveal, snapshot;
 let nextGarbageAt, revealUntil;
 let floats = [], flashes = [];
+
+const START_LEVEL_KEY = 'tetris-start-level';
+const MAX_START_LEVEL = 15;
+let startLevel = 1;     // preferencia para la próxima partida
+let gameStartLevel = 1; // nivel con el que empezó la partida actual
+let ignoreRepeat = false; // tras reanudar, ignora la auto-repetición de teclas mantenidas
 
 // ---------------------------------------------------------------------------
 // Piezas
@@ -408,7 +415,7 @@ function clearLines(tspin) {
     lines += n;
     linesSincePower += n;
     energy = Math.min(100, energy + n * ENERGY_PER_LINE + (difficult ? ENERGY_PER_LINE : 0));
-    level = Math.floor(lines / 10) + 1;
+    level = gameStartLevel + Math.floor(lines / 10);
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
 
     if (n === 4) {
@@ -918,7 +925,8 @@ function applyTheme(newTheme) {
 // ---------------------------------------------------------------------------
 
 // variant: 'win' (verde) | 'lose' (rojo) | null (color de acento)
-function showOverlay({ title, text = '', modes = false, abilities = false, restart = false, variant = null }) {
+function showOverlay({ title, text = '', modes = false, abilities = false, restart = false, variant = null, pause = false }) {
+  pauseMenu.classList.toggle('hidden', !pause);
   overlayTitle.textContent = title;
   overlayTitle.classList.toggle('win', variant === 'win');
   overlayTitle.classList.toggle('lose', variant === 'lose');
@@ -962,13 +970,127 @@ function togglePause() {
   if (gameOver || menu === 'abilities') return;
   if (paused) {
     menu = null;
+    ignoreRepeat = true;
     hideOverlay();
     resume();
   } else {
     paused = true;
     menu = 'pause';
     cancelAnimationFrame(animId);
-    showOverlay({ title: 'PAUSA' });
+    pauseView = 'main';
+    pauseSel = 0;
+    renderPauseMenu();
+    showOverlay({ title: 'PAUSA', text: '↑↓ elegir · Enter aceptar · P/Esc reanudar', pause: true });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Menú de pausa
+// ---------------------------------------------------------------------------
+
+const PAUSE_OPTIONS = [
+  { id: 'resume',   name: 'Reanudar',      desc: 'Volver al juego' },
+  { id: 'restart',  name: 'Reiniciar',     desc: 'Nueva partida en el modo actual' },
+  { id: 'controls', name: 'Ver controles', desc: 'Lista de teclas' },
+  { id: 'level',    name: 'Nivel inicial', desc: '← → para cambiar · próxima partida' },
+];
+
+const CONTROL_KEYS = [
+  ['← →', 'mover'],
+  ['↑ / X', 'rotar horario'],
+  ['Z', 'rotar antihorario'],
+  ['↓', 'bajar'],
+  ['Espacio', 'caída rápida'],
+  ['C / Shift', 'guardar pieza'],
+  ['E', 'habilidades (energía llena)'],
+  ['P / Esc', 'pausa'],
+  ['M', 'sonido'],
+];
+
+let pauseView = 'main', pauseSel = 0; // pauseView: 'main' | 'controls'
+
+function setStartLevel(n) {
+  startLevel = Math.min(MAX_START_LEVEL, Math.max(1, n));
+  try { localStorage.setItem(START_LEVEL_KEY, String(startLevel)); } catch (e) { /* almacenamiento no disponible */ }
+  if (menu === 'pause') renderPauseMenu();
+}
+
+function renderPauseMenu() {
+  pauseMenu.innerHTML = '';
+  if (pauseView === 'controls') {
+    const list = document.createElement('ul');
+    list.className = 'pause-controls';
+    for (const [keys, action] of CONTROL_KEYS) {
+      const li = document.createElement('li');
+      li.innerHTML = `<kbd>${keys}</kbd><span>${action}</span>`;
+      list.appendChild(li);
+    }
+    pauseMenu.appendChild(list);
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'menu-btn selected';
+    back.innerHTML = '<strong>Volver</strong><small>Enter / Retroceso</small>';
+    back.addEventListener('click', () => { back.blur(); pauseView = 'main'; renderPauseMenu(); });
+    pauseMenu.appendChild(back);
+    return;
+  }
+  PAUSE_OPTIONS.forEach((opt, i) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'menu-btn' + (i === pauseSel ? ' selected' : '');
+    if (opt.id === 'level') {
+      btn.classList.add('level-row');
+      btn.innerHTML = `<strong>${opt.name}: <span class="level-value">${startLevel}</span></strong><small>${opt.desc}</small>` +
+        '<span class="level-ctrl"><span data-d="-1">−</span><span data-d="1">+</span></span>';
+      btn.addEventListener('click', ev => {
+        btn.blur();
+        pauseSel = i;
+        const d = Number(ev.target.dataset && ev.target.dataset.d);
+        if (d) setStartLevel(startLevel + d);
+        else renderPauseMenu();
+      });
+    } else {
+      btn.innerHTML = `<strong>${opt.name}</strong><small>${opt.desc}</small>`;
+      btn.addEventListener('click', () => { btn.blur(); pauseSel = i; activatePauseOption(opt.id); });
+    }
+    pauseMenu.appendChild(btn);
+  });
+}
+
+function activatePauseOption(id) {
+  if (id === 'resume') togglePause();
+  else if (id === 'restart') init(mode);
+  else if (id === 'controls') { pauseView = 'controls'; renderPauseMenu(); }
+}
+
+function handlePauseKey(e) {
+  if (e.repeat) return; // una tecla mantenida desde el juego no navega el menú
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    togglePause();
+    return;
+  }
+  if (pauseView === 'controls') {
+    if (['Enter', 'NumpadEnter', 'Space', 'Backspace'].includes(e.code)) {
+      e.preventDefault();
+      pauseView = 'main';
+      renderPauseMenu();
+    }
+    return;
+  }
+  const n = PAUSE_OPTIONS.length;
+  switch (e.code) {
+    case 'ArrowUp':   pauseSel = (pauseSel + n - 1) % n; renderPauseMenu(); break;
+    case 'ArrowDown': pauseSel = (pauseSel + 1) % n; renderPauseMenu(); break;
+    case 'ArrowLeft':
+    case 'ArrowRight':
+      if (PAUSE_OPTIONS[pauseSel].id === 'level') setStartLevel(startLevel + (e.code === 'ArrowRight' ? 1 : -1));
+      break;
+    case 'Enter':
+    case 'NumpadEnter':
+    case 'Space':
+      e.preventDefault();
+      activatePauseOption(PAUSE_OPTIONS[pauseSel].id);
+      break;
   }
 }
 
@@ -1008,10 +1130,13 @@ function init(newMode = mode) {
   if (mode === 'fijo') applyFixedPattern();
   score = 0;
   lines = 0;
-  level = 1;
+  // Inverso depende de subir hasta INVERSE_LEVEL: siempre empieza en 1
+  gameStartLevel = mode === 'inverso' ? 1 : startLevel;
+  ignoreRepeat = true; // p.ej. Espacio mantenido tras «Reiniciar» no debe hacer caída rápida
+  level = gameStartLevel;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   dropAccum = 0;
   gameTime = 0;
   hold = null;
@@ -1053,8 +1178,14 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (!started) return;
-  if (e.code === 'KeyP') { togglePause(); return; }
+  if (menu === 'pause') { handlePauseKey(e); return; } // bloquea las entradas del juego
+  if (e.code === 'KeyP' || e.code === 'Escape') { if (!e.repeat) togglePause(); return; }
   if (paused || gameOver) return;
+  // Tras reanudar, una tecla mantenida desde el menú no debe mover la pieza
+  if (ignoreRepeat) {
+    if (e.repeat) return;
+    ignoreRepeat = false;
+  }
 
   switch (e.code) {
     case 'ArrowLeft':  move(-1); break;
@@ -1110,6 +1241,10 @@ let savedTheme = null, savedMute = null;
 try {
   savedTheme = localStorage.getItem(THEME_KEY);
   savedMute = localStorage.getItem(MUTE_KEY);
+} catch (e) { /* ignorar */ }
+try {
+  const savedLevel = parseInt(localStorage.getItem(START_LEVEL_KEY), 10);
+  if (savedLevel >= 1 && savedLevel <= MAX_START_LEVEL) startLevel = savedLevel;
 } catch (e) { /* ignorar */ }
 
 applyTheme(savedTheme === 'light' ? 'light' : 'dark');

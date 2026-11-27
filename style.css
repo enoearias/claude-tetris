@@ -341,6 +341,69 @@ kbd {
   cursor: not-allowed;
 }
 
+/* ---- Menú de pausa ---- */
+.menu.pause-menu {
+  grid-template-columns: 1fr;
+  width: 280px;
+}
+
+.menu-btn.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.menu-btn.level-row {
+  position: relative;
+}
+
+.level-ctrl {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 6px;
+}
+
+.level-ctrl span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--kbd-border);
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.level-ctrl span:hover {
+  border-color: var(--accent);
+}
+
+.level-value {
+  color: var(--accent);
+}
+
+.pause-controls {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  font-size: 13px;
+}
+
+.pause-controls li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.pause-controls kbd {
+  min-width: 80px;
+  text-align: center;
+}
+
 /* ---- Sacudida del tablero (Tetris, combos, bomba) ---- */
 #board.shake {
   animation: shake 0.3s;
