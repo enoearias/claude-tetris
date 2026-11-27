@@ -404,6 +404,97 @@ kbd {
   text-align: center;
 }
 
+/* ---- Tabla de records ---- */
+.records {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 420px;
+}
+
+.records.hidden,
+.name-form.hidden {
+  display: none;
+}
+
+.records-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.records-table th {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--label);
+  font-weight: 600;
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.records-table td {
+  padding: 3px 4px;
+  color: var(--text);
+}
+
+.records-table td:nth-child(3) {
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.records-table tr.highlight td {
+  background: rgba(255, 213, 79, 0.25);
+  font-weight: 700;
+}
+
+.records-empty {
+  color: var(--muted) !important;
+  font-style: italic;
+}
+
+.name-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: #ffd54f;
+  font-weight: 700;
+}
+
+[data-theme="light"] .name-form {
+  color: #b8860b;
+}
+
+.name-form input {
+  width: 120px;
+  padding: 4px 6px;
+  border: 1px solid var(--kbd-border);
+  border-radius: 4px;
+  background: var(--board-bg);
+  color: var(--text);
+  font-family: inherit;
+  user-select: text;
+}
+
+.name-form button,
+#reset-records-btn {
+  background: var(--kbd-bg);
+  color: var(--text);
+  border: 1px solid var(--kbd-border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.name-form button:hover,
+#reset-records-btn:hover {
+  border-color: var(--accent);
+}
+
 /* ---- Sacudida del tablero (Tetris, combos, bomba) ---- */
 #board.shake {
   animation: shake 0.3s;
