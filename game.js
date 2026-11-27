@@ -158,6 +158,7 @@ const abilityMenu = document.getElementById('ability-menu');
 const restartBtn = document.getElementById('restart-btn');
 const themeBtn = document.getElementById('theme-btn');
 const soundBtn = document.getElementById('sound-btn');
+const skinBtn = document.getElementById('skin-btn');
 
 const THEME_KEY = 'tetris-theme';
 const MUTE_KEY = 'tetris-muted';
@@ -780,34 +781,203 @@ function updateHUD() {
   queueSection.classList.toggle('hidden', queueReveal <= 0);
 }
 
+// ---------------------------------------------------------------------------
+// Skins: paleta (index-aligned con COLORS) + función de dibujo de bloque
+// ---------------------------------------------------------------------------
+
+const SKIN_KEY = 'tetris-skin';
+const RAINBOW = ['#ff5252', '#ffd740', '#69f0ae', '#40c4ff', '#e040fb'];
+
+const NEON_COLORS = [
+  null,
+  '#00ffff', // I
+  '#ffff00', // O
+  '#d000ff', // T
+  '#39ff14', // S
+  '#ff073a', // Z
+  '#1f51ff', // J
+  '#ff8c00', // L
+  '#c0c0ff', // N
+  '#ff10f0', // +
+  '#ccff00', // U
+  '#00ffaa', // Y
+  '#fffb96', // single
+  '#55557a', // basura
+  '#ffffff', // comodín
+];
+
+const PASTEL_COLORS = [
+  null,
+  '#a0e7ef', // I
+  '#fff1a8', // O
+  '#dcb8f0', // T
+  '#b5e8b0', // S
+  '#f7b2b2', // Z
+  '#b8d8fa', // J
+  '#ffd1a1', // L
+  '#d3dbe0', // N
+  '#f8bbd9', // +
+  '#d4ecb0', // U
+  '#a8ddd5', // Y
+  '#fffbc8', // single
+  '#8a8fa0', // basura
+  '#ffffff', // comodín
+];
+
+const PASTEL_COLORS_LIGHT = [
+  null,
+  '#7fd6e2', // I
+  '#f5d76e', // O
+  '#c99ae3', // T
+  '#8fd18a', // S
+  '#ee9393', // Z
+  '#8fbff0', // J
+  '#f6b77a', // L
+  '#aab6be', // N
+  '#ef93bd', // +
+  '#b5d986', // U
+  '#80c7bd', // Y
+  '#f2e27a', // single
+  '#b4b8c4', // basura
+  '#000000', // comodín
+];
+
+const PIXEL_COLORS = [
+  null,
+  '#3cbcfc', // I
+  '#fcc800', // O
+  '#a044f0', // T
+  '#58d854', // S
+  '#f83800', // Z
+  '#0058f8', // J
+  '#fca044', // L
+  '#bcbcbc', // N
+  '#f878f8', // +
+  '#b8f818', // U
+  '#00a8a8', // Y
+  '#fce0a8', // single
+  '#585858', // basura
+  '#ffffff', // comodín
+];
+
+// Retro: bloque plano con franja de brillo (estilo original)
+function drawBlockRetro(context, px, py, s, fill) {
+  context.fillStyle = fill;
+  context.fillRect(px, py, s, s);
+  context.fillStyle = 'rgba(255,255,255,0.12)';
+  context.fillRect(px, py, s, 4);
+}
+
+// Neon: interior translúcido + borde brillante con resplandor (shadowBlur)
+function drawBlockNeon(context, px, py, s, fill, color) {
+  const a = context.globalAlpha;
+  context.shadowColor = color;
+  context.shadowBlur = Math.max(4, s * 0.45);
+  context.globalAlpha = a * 0.3;
+  context.fillStyle = fill;
+  context.fillRect(px, py, s, s);
+  context.globalAlpha = a;
+  context.strokeStyle = fill;
+  context.lineWidth = Math.max(1.5, s / 12);
+  context.strokeRect(px + 1, py + 1, s - 2, s - 2);
+}
+
+// Trazado de rectángulo redondeado con arcos (no depende de roundRect)
+function roundedRectPath(context, x, y, w, h, r) {
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + w, y, x + w, y + h, r);
+  context.arcTo(x + w, y + h, x, y + h, r);
+  context.arcTo(x, y + h, x, y, r);
+  context.arcTo(x, y, x + w, y, r);
+  context.closePath();
+}
+
+// Pastel: bloque redondeado con brillo suave arriba
+function drawBlockPastel(context, px, py, s, fill) {
+  roundedRectPath(context, px, py, s, s, s * 0.28);
+  context.fillStyle = fill;
+  context.fill();
+  context.strokeStyle = 'rgba(0,0,0,0.12)';
+  context.lineWidth = 1;
+  context.stroke();
+  roundedRectPath(context, px + s * 0.18, py + s * 0.12, s * 0.64, s * 0.22, s * 0.11);
+  context.fillStyle = 'rgba(255,255,255,0.45)';
+  context.fill();
+}
+
+// Pixel art: bisel pixelado + tramado (dithering) en damero + píxel de brillo
+function drawBlockPixel(context, px, py, s, fill) {
+  const u = Math.max(2, Math.floor(s / 7)); // tamaño de "píxel" (4 px a 30, 2 px a 15)
+  context.fillStyle = fill;
+  context.fillRect(px, py, s, s);
+  context.fillStyle = 'rgba(255,255,255,0.35)';
+  context.fillRect(px, py, s, u);
+  context.fillRect(px, py, u, s);
+  context.fillStyle = 'rgba(0,0,0,0.35)';
+  context.fillRect(px, py + s - u, s, u);
+  context.fillRect(px + s - u, py, u, s);
+  context.fillStyle = 'rgba(0,0,0,0.14)';
+  const n = Math.floor((s - 2 * u) / u);
+  for (let j = 0; j < n; j++)
+    for (let i = 0; i < n; i++)
+      if ((i + j) % 2) context.fillRect(px + u + i * u, py + u + j * u, u, u);
+  context.fillStyle = 'rgba(255,255,255,0.7)';
+  context.fillRect(px + u, py + u, u, u);
+}
+
+// colors/colorsLight: paleta para tema oscuro/claro; wild: paradas del degradado del comodín
+const SKINS = {
+  retro:  { name: 'Retro',     colors: COLORS,        colorsLight: COLORS_LIGHT,        wild: RAINBOW, drawBlock: drawBlockRetro },
+  neon:   { name: 'Neon',      colors: NEON_COLORS,   colorsLight: NEON_COLORS,         wild: ['#ff073a', '#ffff00', '#39ff14', '#00ffff', '#ff10f0'], drawBlock: drawBlockNeon, glow: true, darkBoard: true },
+  pastel: { name: 'Pastel',    colors: PASTEL_COLORS, colorsLight: PASTEL_COLORS_LIGHT, wild: ['#ffb3b3', '#ffe9a8', '#b9f5cf', '#a8dcff', '#e6b3ff'], drawBlock: drawBlockPastel },
+  pixel:  { name: 'Pixel art', colors: PIXEL_COLORS,  colorsLight: PIXEL_COLORS,        wild: RAINBOW, drawBlock: drawBlockPixel, dotGrid: true },
+};
+let skin = 'retro';
+
+function skinColor(colorIndex) {
+  const sk = SKINS[skin];
+  return (theme === 'light' ? sk.colorsLight : sk.colors)[colorIndex];
+}
+
+// Fondo del canvas oscuro (tema oscuro o skin con fondo negro)
+function darkCanvas() {
+  return theme !== 'light' || !!SKINS[skin].darkBoard;
+}
+
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
   const px = x * size + 1, py = y * size + 1, s = size - 2;
-  context.globalAlpha = alpha ?? 1;
+  const sk = SKINS[skin];
+  let fill, color;
   if (colorIndex === WILD) {
-    const g = context.createLinearGradient(px, py, px + s, py + s);
-    ['#ff5252', '#ffd740', '#69f0ae', '#40c4ff', '#e040fb'].forEach((c, i) => g.addColorStop(i / 4, c));
-    context.fillStyle = g;
+    fill = context.createLinearGradient(px, py, px + s, py + s);
+    sk.wild.forEach((c, i) => fill.addColorStop(i / (sk.wild.length - 1), c));
+    color = '#ffffff';
   } else {
-    context.fillStyle = (theme === 'light' ? COLORS_LIGHT : COLORS)[colorIndex];
+    fill = color = skinColor(colorIndex);
   }
-  context.fillRect(px, py, s, s);
-  // highlight
-  context.fillStyle = 'rgba(255,255,255,0.12)';
-  context.fillRect(px, py, s, 4);
-  context.globalAlpha = 1;
+  context.save();
+  context.globalAlpha = alpha ?? 1;
+  sk.drawBlock(context, px, py, s, fill, color);
+  context.restore();
 }
 
 // Dibuja el círculo del hueco de la tuerca en la celda central (x+1, y+1) de la pieza
 function drawNutHole(context, x, y, size, alpha) {
-  const color = (theme === 'light' ? COLORS_LIGHT : COLORS)[NUT];
+  const color = skinColor(NUT);
+  context.save();
   context.globalAlpha = alpha ?? 1;
+  if (SKINS[skin].glow) {
+    context.shadowColor = color;
+    context.shadowBlur = size * 0.4;
+  }
   context.strokeStyle = color;
   context.lineWidth = Math.max(2, size / 8);
   context.beginPath();
   context.arc((x + 1.5) * size, (y + 1.5) * size, size * 0.35, 0, Math.PI * 2);
   context.stroke();
-  context.globalAlpha = 1;
+  context.restore();
 }
 
 // Pieza completa en (ox, oy) en unidades de celda: bloques + hueco de tuerca + marca de power-up
@@ -821,7 +991,7 @@ function drawPiece(context, piece, ox, oy, size, alpha = 1, decorate = true) {
 
   context.save();
   context.globalAlpha = alpha;
-  context.strokeStyle = theme === 'light' ? '#000' : '#fff';
+  context.strokeStyle = darkCanvas() ? '#fff' : '#000';
   context.lineWidth = 2;
   let minC = Infinity, maxC = -Infinity, minR = Infinity, maxR = -Infinity;
   for (let r = 0; r < shape.length; r++)
@@ -834,13 +1004,21 @@ function drawPiece(context, piece, ox, oy, size, alpha = 1, decorate = true) {
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   context.font = `${Math.floor(size * 0.8)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
-  context.fillStyle = theme === 'light' ? '#000' : '#fff';
+  context.fillStyle = darkCanvas() ? '#fff' : '#000';
   context.fillText(POWERS[piece.power].icon, (ox + (minC + maxC + 1) / 2) * size, (oy + (minR + maxR + 1) / 2) * size);
   context.restore();
 }
 
 function drawGrid() {
-  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid').trim();
+  const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--grid').trim();
+  if (SKINS[skin].dotGrid) { // pixel art: puntos en las intersecciones
+    ctx.fillStyle = gridColor;
+    for (let c = 1; c < COLS; c++)
+      for (let r = 1; r < ROWS; r++)
+        ctx.fillRect(c * BLOCK - 1, r * BLOCK - 1, 2, 2);
+    return;
+  }
+  ctx.strokeStyle = gridColor;
   ctx.lineWidth = 0.5;
   for (let c = 1; c < COLS; c++) {
     ctx.beginPath();
@@ -909,6 +1087,16 @@ function applyTheme(newTheme) {
   themeBtn.textContent = theme === 'dark' ? '☀ Modo claro' : '🌙 Modo oscuro';
   try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* almacenamiento no disponible */ }
   // Redibujar aunque el juego esté en pausa o terminado
+  draw();
+  if (queue) drawPreviews();
+}
+
+function applySkin(name) {
+  skin = Object.hasOwn(SKINS, name) ? name : 'retro';
+  document.documentElement.dataset.skin = skin;
+  skinBtn.textContent = `🎨 Skin: ${SKINS[skin].name}`;
+  try { localStorage.setItem(SKIN_KEY, skin); } catch (e) { /* almacenamiento no disponible */ }
+  // Redibujar aunque el juego esté en pausa o terminado (el fondo/rejilla dependen de CSS)
   draw();
   if (queue) drawPreviews();
 }
@@ -1114,4 +1302,14 @@ try {
 
 applyTheme(savedTheme === 'light' ? 'light' : 'dark');
 applyMute(savedMute === '1');
+
+skinBtn.addEventListener('click', () => {
+  const names = Object.keys(SKINS);
+  applySkin(names[(names.indexOf(skin) + 1) % names.length]);
+  skinBtn.blur();
+});
+
+let savedSkin = null;
+try { savedSkin = localStorage.getItem(SKIN_KEY); } catch (e) { /* ignorar */ }
+applySkin(savedSkin);
 showModeMenu();

@@ -206,7 +206,7 @@ kbd {
 }
 
 /* ---- Botón de tema ---- */
-#theme-btn, #sound-btn {
+#theme-btn, #sound-btn, #skin-btn {
   background: var(--kbd-bg);
   color: var(--text);
   border: 1px solid var(--kbd-border);
@@ -218,7 +218,7 @@ kbd {
   transition: background 0.15s;
 }
 
-#theme-btn:hover, #sound-btn:hover {
+#theme-btn:hover, #sound-btn:hover, #skin-btn:hover {
   border-color: var(--accent);
 }
 
@@ -352,4 +352,21 @@ kbd {
   40% { transform: translate(5px, -2px); }
   60% { transform: translate(-3px, 1px); }
   80% { transform: translate(3px, -1px); }
+}
+
+/* ---- Skins: Neon usa fondo negro en los canvas (en ambos temas) ---- */
+[data-skin="neon"] {
+  --grid: #1c1030;
+}
+
+[data-skin="neon"] #board,
+[data-skin="neon"] #next-canvas,
+[data-skin="neon"] #hold-canvas,
+[data-skin="neon"] #queue-canvas {
+  background: #000;
+  border-color: #3a1f5c;
+}
+
+[data-skin="neon"] #board {
+  box-shadow: 0 0 30px rgba(170, 0, 255, 0.35);
 }
